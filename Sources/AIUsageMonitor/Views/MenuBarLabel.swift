@@ -29,16 +29,17 @@ struct MenuBarLabelContent: View {
 
 @MainActor
 enum MenuBarLabelRenderer {
-    private static var cache: (groups: [UsageStore.MenuBarGroup], image: NSImage)?
+    private static var cache: (key: String, image: NSImage)?
 
     static func image(for groups: [UsageStore.MenuBarGroup]) -> NSImage? {
         guard !groups.isEmpty else { return nil }
-        if let cache, cache.groups == groups { return cache.image }
+        let key = groups.map { "\($0.provider.rawValue)=\($0.text)" }.joined(separator: ",")
+        if let cache, cache.key == key { return cache.image }
         let renderer = ImageRenderer(content: MenuBarLabelContent(groups: groups))
         renderer.scale = 2
         guard let image = renderer.nsImage else { return nil }
         image.isTemplate = true
-        cache = (groups, image)
+        cache = (key, image)
         return image
     }
 }

@@ -114,11 +114,17 @@ final class UsageStore: ObservableObject {
 
     private nonisolated func fetchStatus(for provider: AIProvider) async -> ProviderStatus {
         do {
-            let snapshot: ProviderSnapshot
-            switch provider {
-            case .claude: snapshot = try await anthropic.fetch()
-            case .openai: snapshot = try await openai.fetch()
-            case .gemini: snapshot = try await gemini.fetch()
+            // The timeout abandons hung work (e.g. a keychain read stuck on a
+            // permission dialog) so one provider can never wedge refreshes.
+            let snapshot = try await Async.withTimeout(
+                seconds: 20,
+                timeoutMessage: "\(provider.displayName) timed out — a keychain or network prompt may be waiting."
+            ) { [anthropic, openai, gemini] in
+                switch provider {
+                case .claude: return try await anthropic.fetch()
+                case .openai: return try await openai.fetch()
+                case .gemini: return try await gemini.fetch()
+                }
             }
             return .ready(snapshot)
         } catch let error as ProviderError {

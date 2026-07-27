@@ -32,6 +32,51 @@ enum HTTP {
     }
 }
 
+/// One-shot claim used to guarantee a continuation resumes exactly once.
+private final class ResumeFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var claimed = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if claimed { return false }
+        claimed = true
+        return true
+    }
+}
+
+enum Async {
+    /// Runs `operation` but gives up after `seconds`, resuming with a timeout
+    /// error. The losing task is abandoned rather than awaited — critical for
+    /// operations that can block indefinitely (e.g. a keychain read waiting
+    /// on a permission dialog): its eventual result is discarded.
+    static func withTimeout<T: Sendable>(
+        seconds: Double,
+        timeoutMessage: String,
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        let flag = ResumeFlag()
+        return try await withCheckedThrowingContinuation { continuation in
+            Task {
+                do {
+                    let value = try await operation()
+                    if flag.claim() { continuation.resume(returning: value) }
+                } catch {
+                    if flag.claim() { continuation.resume(throwing: error) }
+                }
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                if flag.claim() {
+                    continuation.resume(throwing: ProviderError(
+                        kind: .network, message: timeoutMessage))
+                }
+            }
+        }
+    }
+}
+
 enum Timestamps {
     /// Parses ISO-8601 timestamps with or without fractional seconds,
     /// including the 6-digit microsecond form some APIs return

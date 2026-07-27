@@ -22,6 +22,9 @@ enum Main {
         if let index = arguments.firstIndex(of: "--render-label"), arguments.count > index + 1 {
             RenderCommand.run(target: .label, path: arguments[index + 1])
         }
+        if let index = arguments.firstIndex(of: "--self-test"), arguments.count > index + 1 {
+            AppDelegate.selfTestDir = arguments[index + 1]
+        }
 
         let app = NSApplication.shared
         let delegate = AppDelegate()
@@ -40,6 +43,10 @@ private final class ExitCodeBox: @unchecked Sendable {
 /// rendering quirks, so the status item and popover are managed directly.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// When set, the app snapshots its live status-item and popover windows
+    /// into this directory shortly after launch, then exits.
+    static var selfTestDir: String?
+
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private var store: UsageStore?
@@ -49,8 +56,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let store = UsageStore()
         self.store = store
 
+        // A stale saved position (inherited from the earlier MenuBarExtra
+        // builds' "Item-0" autosave) can park the item thousands of points
+        // off-screen. Purge legacy/bogus positions before creating the item.
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: "NSStatusItem Preferred Position Item-0")
+        let positionKey = "NSStatusItem Preferred Position AIUsageMonitor"
+        if abs(defaults.double(forKey: positionKey)) > 4000 {
+            defaults.removeObject(forKey: positionKey)
+        }
+
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem = item
+        item.autosaveName = "AIUsageMonitor"
         item.button?.target = self
         item.button?.action = #selector(togglePopover)
         item.button?.toolTip = "AI Usage Monitor"
@@ -67,8 +85,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.updateLabel() }
         updateLabel()
+
+        if let dir = Self.selfTestDir {
+            runSelfTest(outputDir: dir)
+        }
     }
 
+    // Note: no "shrink the label if it doesn't fit" heuristics here. On
+    // multi-display setups, status-item windows can legitimately report
+    // negative coordinates and a nil screen (visible items from Dropbox,
+    // 1Password, etc. show the same), so there is no reliable signal for
+    // "macOS hid my item" — a ladder keyed on it degrades a perfectly
+    // visible label to an icon.
     private func updateLabel() {
         guard let button = statusItem?.button, let store else { return }
         if let image = MenuBarLabelRenderer.image(for: store.menuBarGroups) {
@@ -88,6 +116,85 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             store?.refreshIfStale()
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
+        }
+    }
+
+    // MARK: - Self test
+
+    /// Captures the app's own live windows (status item + open popover) as
+    /// PNGs plus a status report, then exits. Unlike the --render-* modes,
+    /// this exercises the real AppKit pipeline the user sees.
+    private func runSelfTest(outputDir: String) {
+        Task { @MainActor in
+            try? FileManager.default.createDirectory(
+                atPath: outputDir, withIntermediateDirectories: true)
+            var report: [String] = []
+
+            // Long enough for the 20s per-provider fetch timeout to land.
+            for _ in 0..<120 where store?.lastRefreshed == nil {
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+            report.append("firstRefreshCompleted: \(store?.lastRefreshed != nil)")
+
+            for (index, screen) in NSScreen.screens.enumerated() {
+                report.append("screen[\(index)]: \(screen.frame)")
+            }
+            if let button = statusItem?.button, let window = button.window {
+                report.append("statusItem.isVisible: \(statusItem?.isVisible ?? false)")
+                report.append("statusItem.windowFrame: \(window.frame)")
+                report.append("statusItem.onScreen: \(window.screen != nil)")
+                report.append("statusItem.occlusion.visible: \(window.occlusionState.contains(.visible))")
+                report.append("statusItem.hasImage: \(button.image != nil)")
+                report.append("statusItem.imageSize: \(button.image?.size ?? .zero)")
+                if let content = window.contentView {
+                    snapshot(content, to: "\(outputDir)/statusitem-live.png")
+                }
+            } else {
+                report.append("statusItem: MISSING")
+            }
+
+            // Snapshots lose the window's vibrancy backdrop, which makes
+            // dark-mode (white) text unreadable on the transparent-rendered
+            // background — pin the popover to light appearance for capture.
+            popover.appearance = NSAppearance(named: .aqua)
+            togglePopover()
+            try? await Task.sleep(for: .seconds(1))
+            report.append("popover.isShown: \(popover.isShown)")
+            if let view = popover.contentViewController?.view {
+                view.layoutSubtreeIfNeeded()
+                report.append("popover.viewSize: \(view.bounds.size)")
+                snapshot(view, to: "\(outputDir)/popover-live.png")
+            }
+
+            let metricCounts = AIProvider.allCases.map { provider -> String in
+                let count = store?.statuses[provider]?.snapshot?.metrics.count ?? -1
+                return "\(provider.rawValue)=\(count)"
+            }
+            report.append("metrics: \(metricCounts.joined(separator: " "))")
+
+            try? report.joined(separator: "\n")
+                .write(toFile: "\(outputDir)/status.txt", atomically: true, encoding: .utf8)
+            NSApp.terminate(nil)
+        }
+    }
+
+    private func snapshot(_ view: NSView, to path: String) {
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        // Composite over a mid-gray backdrop: window snapshots lose the
+        // vibrancy backing, which would leave template/white content
+        // invisible on the PNG's default white.
+        let size = view.bounds.size
+        let composed = NSImage(size: size)
+        composed.lockFocus()
+        NSColor(calibratedWhite: 0.35, alpha: 1).setFill()
+        NSRect(origin: .zero, size: size).fill()
+        rep.draw(in: NSRect(origin: .zero, size: size))
+        composed.unlockFocus()
+        if let tiff = composed.tiffRepresentation,
+           let outRep = NSBitmapImageRep(data: tiff),
+           let png = outRep.representation(using: .png, properties: [:]) {
+            try? png.write(to: URL(fileURLWithPath: path))
         }
     }
 }

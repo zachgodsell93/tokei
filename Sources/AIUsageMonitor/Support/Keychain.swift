@@ -40,6 +40,10 @@ enum Keychain {
     }
 
     static func read(service: String) -> Data? {
-        readGenericPassword(service: service) ?? readViaSecurityCLI(service: service)
+        // CLI first: /usr/bin/security reads this item without tripping the
+        // per-app keychain ACL prompt that SecItemCopyMatching raises for a
+        // freshly (ad-hoc) signed app — a prompt that blocks indefinitely
+        // when the app runs unattended.
+        readViaSecurityCLI(service: service) ?? readGenericPassword(service: service)
     }
 }
