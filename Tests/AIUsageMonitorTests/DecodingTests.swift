@@ -101,11 +101,9 @@ final class DecodingTests: XCTestCase {
     }
 
     func testOpenAIWindowLabels() {
-        XCTAssertEqual(OpenAIClient.windowLabel(seconds: 18000).label, "5-hour limit")
-        XCTAssertEqual(OpenAIClient.windowLabel(seconds: 18000).compact, "O5h")
-        XCTAssertEqual(OpenAIClient.windowLabel(seconds: 604800).label, "Weekly limit")
-        XCTAssertEqual(OpenAIClient.windowLabel(seconds: 604800).compact, "O7d")
-        XCTAssertEqual(OpenAIClient.windowLabel(seconds: 259200).label, "3-day limit")
+        XCTAssertEqual(OpenAIClient.windowLabel(seconds: 18000), "5-hour limit")
+        XCTAssertEqual(OpenAIClient.windowLabel(seconds: 604800), "Weekly limit")
+        XCTAssertEqual(OpenAIClient.windowLabel(seconds: 259200), "3-day limit")
     }
 
     // MARK: - Gemini
@@ -176,8 +174,6 @@ final class DecodingTests: XCTestCase {
     func testGeminiModelNames() {
         XCTAssertEqual(GeminiClient.prettyModelName("gemini-2.5-pro"), "2.5 Pro")
         XCTAssertEqual(GeminiClient.prettyModelName("gemini-2.5-flash-lite"), "2.5 Flash Lite")
-        XCTAssertEqual(GeminiClient.compactModelCode("2.5 Pro"), "GP")
-        XCTAssertEqual(GeminiClient.compactModelCode("2.5 Flash Lite"), "GFL")
     }
 
     // MARK: - Timestamps
@@ -199,10 +195,9 @@ final class DecodingTests: XCTestCase {
 
     // MARK: - Metrics
 
-    func testMetricSeverityAndMenuBarText() {
+    func testMetricSeverityAndClamping() {
         func metric(_ percent: Double) -> UsageMetric {
-            UsageMetric(id: "t", provider: .claude, label: "t", compactCode: "C5h",
-                        usedPercent: percent)
+            UsageMetric(id: "t", provider: .claude, label: "t", usedPercent: percent)
         }
         XCTAssertEqual(metric(10).severityColor, .green)
         XCTAssertEqual(metric(60).severityColor, .yellow)
@@ -210,6 +205,12 @@ final class DecodingTests: XCTestCase {
         XCTAssertEqual(metric(95).severityColor, .red)
         XCTAssertEqual(metric(150).clampedPercent, 100)
         XCTAssertEqual(metric(-5).clampedPercent, 0)
-        XCTAssertEqual(metric(11.4).menuBarText, "C5h 11%")
+    }
+
+    func testMenuBarGroupText() {
+        let single = UsageStore.MenuBarGroup(provider: .claude, percents: [19.4])
+        XCTAssertEqual(single.text, "19%")
+        let pair = UsageStore.MenuBarGroup(provider: .claude, percents: [19.4, 36.6])
+        XCTAssertEqual(pair.text, "19·37%")
     }
 }

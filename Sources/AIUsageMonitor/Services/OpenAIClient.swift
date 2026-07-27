@@ -82,14 +82,13 @@ struct OpenAIClient: Sendable {
 
     /// "5-hour limit" for a ~5h window, "Weekly limit" for ~7d, otherwise a
     /// humanized duration.
-    static func windowLabel(seconds: Double) -> (label: String, compact: String) {
+    static func windowLabel(seconds: Double) -> String {
         let hours = Int((seconds / 3600).rounded())
         if hours < 24 {
-            return ("\(hours)-hour limit", "O\(hours)h")
+            return "\(hours)-hour limit"
         }
         let days = Int((seconds / 86400).rounded())
-        if days == 7 { return ("Weekly limit", "O7d") }
-        return ("\(days)-day limit", "O\(days)d")
+        return days == 7 ? "Weekly limit" : "\(days)-day limit"
     }
 
     func fetch() async throws -> ProviderSnapshot {
@@ -130,35 +129,51 @@ struct OpenAIClient: Sendable {
         snapshot.planLabel = usage.plan_type?.capitalized
         snapshot.accountLabel = usage.email
 
-        func add(_ window: UsageResponse.Window?, id: String, sublabel: String? = nil) {
-            guard let window, let used = window.used_percent,
-                  let seconds = window.limit_window_seconds else { return }
-            let (label, compact) = Self.windowLabel(seconds: seconds)
+        func makeMetric(_ window: UsageResponse.Window, id: String, sublabel: String? = nil) -> UsageMetric? {
+            guard let used = window.used_percent,
+                  let seconds = window.limit_window_seconds else { return nil }
             var resetsAt: Date?
             if let epoch = window.reset_at {
                 resetsAt = Date(timeIntervalSince1970: epoch)
             } else if let after = window.reset_after_seconds {
                 resetsAt = Date.now.addingTimeInterval(after)
             }
-            snapshot.metrics.append(UsageMetric(
+            return UsageMetric(
                 id: id,
                 provider: .openai,
-                label: label,
-                compactCode: compact,
+                label: Self.windowLabel(seconds: seconds),
                 sublabel: sublabel,
                 usedPercent: used,
-                resetsAt: resetsAt))
+                resetsAt: resetsAt)
         }
 
-        add(usage.rate_limit?.primary_window, id: "openai.primary")
-        add(usage.rate_limit?.secondary_window, id: "openai.secondary")
+        // The API only reports windows with activity (a fresh account gets
+        // just the weekly window, or none). Present stable 5-hour and weekly
+        // slots regardless: an unreported window genuinely means 0% used.
+        var fiveHour: UsageMetric?
+        var weekly: UsageMetric?
+        for window in [usage.rate_limit?.primary_window, usage.rate_limit?.secondary_window] {
+            guard let window, let seconds = window.limit_window_seconds else { continue }
+            if seconds < 86400 {
+                if fiveHour == nil { fiveHour = makeMetric(window, id: "openai.five_hour") }
+            } else if weekly == nil {
+                weekly = makeMetric(window, id: "openai.seven_day")
+            }
+        }
+        snapshot.metrics.append(fiveHour ?? UsageMetric(
+            id: "openai.five_hour", provider: .openai, label: "5-hour limit", usedPercent: 0))
+        snapshot.metrics.append(weekly ?? UsageMetric(
+            id: "openai.seven_day", provider: .openai, label: "Weekly limit", usedPercent: 0))
 
         // Model-specific limits (e.g. Spark) arrive as named extra rate limits.
         for extra in usage.additional_rate_limits ?? [] {
             guard let limit = extra.rate_limit else { continue }
             let name = extra.limit_name ?? "extra"
-            add(limit.primary_window, id: "openai.\(name).primary", sublabel: name)
-            add(limit.secondary_window, id: "openai.\(name).secondary", sublabel: name)
+            for (slot, window) in [("primary", limit.primary_window), ("secondary", limit.secondary_window)] {
+                if let window, let metric = makeMetric(window, id: "openai.\(name).\(slot)", sublabel: name) {
+                    snapshot.metrics.append(metric)
+                }
+            }
         }
 
         var notes: [String] = []

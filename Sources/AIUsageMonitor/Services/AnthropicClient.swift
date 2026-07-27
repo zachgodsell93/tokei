@@ -88,22 +88,21 @@ struct AnthropicClient: Sendable {
         var snapshot = ProviderSnapshot(provider: .claude)
         var metrics: [UsageMetric] = []
 
-        func add(_ window: UsageResponse.Window?, id: String, label: String, compact: String, sublabel: String? = nil) {
+        func add(_ window: UsageResponse.Window?, id: String, label: String, sublabel: String? = nil) {
             guard let window, let used = window.utilization else { return }
             metrics.append(UsageMetric(
                 id: id,
                 provider: .claude,
                 label: label,
-                compactCode: compact,
                 sublabel: sublabel,
                 usedPercent: used,
                 resetsAt: window.resets_at.flatMap(Timestamps.parseISO)))
         }
 
-        add(usage.five_hour, id: "claude.five_hour", label: "5-hour limit", compact: "C5h")
-        add(usage.seven_day, id: "claude.seven_day", label: "7-day limit", compact: "C7d")
-        add(usage.seven_day_opus, id: "claude.seven_day_opus", label: "7-day · Opus", compact: "C7dO")
-        add(usage.seven_day_sonnet, id: "claude.seven_day_sonnet", label: "7-day · Sonnet", compact: "C7dS")
+        add(usage.five_hour, id: "claude.five_hour", label: "5-hour limit")
+        add(usage.seven_day, id: "claude.seven_day", label: "7-day limit")
+        add(usage.seven_day_opus, id: "claude.seven_day_opus", label: "7-day · Opus")
+        add(usage.seven_day_sonnet, id: "claude.seven_day_sonnet", label: "7-day · Sonnet")
         snapshot.metrics = metrics
 
         if let profile: ProfileResponse = try? await HTTP.send(request(Self.profileURL, token: token)) {

@@ -35,8 +35,16 @@ final class UsageStore: ObservableObject {
     private enum Keys {
         static let pollMinutes = "pollMinutes"
         static let enabledProviders = "enabledProviders"
-        static let pinnedMetrics = "pinnedMetrics"
+        // v2: pin IDs became slot-based (openai.five_hour) and the default
+        // set grew to one entry per provider when logos landed.
+        static let pinnedMetrics = "pinnedMetricsV2"
     }
+
+    static let defaultPinnedMetricIDs = [
+        "claude.five_hour", "claude.seven_day",
+        "openai.five_hour", "openai.seven_day",
+        "gemini.pro",
+    ]
 
     private let defaults: UserDefaults
     private let anthropic = AnthropicClient()
@@ -54,7 +62,7 @@ final class UsageStore: ObservableObject {
             enabledProviders = Set(AIProvider.allCases)
         }
         pinnedMetricIDs = defaults.stringArray(forKey: Keys.pinnedMetrics)
-            ?? ["claude.five_hour", "claude.seven_day"]
+            ?? Self.defaultPinnedMetricIDs
         startPolling()
     }
 
@@ -166,9 +174,27 @@ final class UsageStore: ObservableObject {
         }
     }
 
-    /// Compact text for the menu bar, e.g. "C5h 11% C7d 35%".
-    var menuBarSummary: String? {
-        let parts = pinnedMetricIDs.compactMap { metric(id: $0)?.menuBarText }
-        return parts.isEmpty ? nil : parts.joined(separator: "  ")
+    struct MenuBarGroup: Identifiable, Equatable {
+        let provider: AIProvider
+        /// Pinned metric percentages in pin order, e.g. [19, 37].
+        let percents: [Double]
+        var id: String { provider.rawValue }
+
+        /// "19·37%" — values joined with a middot, one trailing percent sign.
+        var text: String {
+            percents.map { String(Int($0.rounded())) }.joined(separator: "·") + "%"
+        }
+    }
+
+    /// Pinned metrics grouped per provider for the menu bar:
+    /// one provider logo followed by that provider's pinned percentages.
+    var menuBarGroups: [MenuBarGroup] {
+        orderedProviders.compactMap { provider in
+            let pinned = pinnedMetricIDs
+                .compactMap { metric(id: $0) }
+                .filter { $0.provider == provider }
+            guard !pinned.isEmpty else { return nil }
+            return MenuBarGroup(provider: provider, percents: pinned.map(\.clampedPercent))
+        }
     }
 }

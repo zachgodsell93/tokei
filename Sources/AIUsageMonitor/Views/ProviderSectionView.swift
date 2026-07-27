@@ -23,9 +23,9 @@ struct ProviderSectionView: View {
 
     private var headerRow: some View {
         HStack(spacing: 6) {
-            Circle()
-                .fill(provider.tint)
-                .frame(width: 7, height: 7)
+            ProviderLogo(provider: provider)
+                .foregroundStyle(provider.tint)
+                .frame(width: 14, height: 14)
             Text(provider.displayName)
                 .font(.subheadline.weight(.semibold))
                 .help(status.snapshot?.accountLabel ?? provider.displayName)

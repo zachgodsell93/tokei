@@ -14,8 +14,8 @@ Everything runs locally. Tokens are read from where the CLIs store them, request
 
 ## Features
 
-- **Menu bar readout** — pin any metric (e.g. Claude 5-hour) and it renders compactly in the menu bar: `C5h 16%  C7d 36%`. Unpin everything for an icon-only look.
-- **Popover dashboard** — click the menu bar item for per-provider cards with color-coded usage bars (green → yellow → orange → red), plan badges (Max 20x, Plus, …), and live "resets in 2h 38m" countdowns.
+- **Menu bar readout** — each provider appears as its logo glyph followed by its pinned percentages, e.g. `✳ 19·37%  ⬡ 0·0%  ✦ 0%` (Claude 5h·7d, OpenAI 5h·weekly, Gemini Pro daily by default). Pin/unpin any metric from its row; unpin everything for an icon-only look.
+- **Popover dashboard** — click the menu bar item for per-provider cards with color-coded usage bars (green → yellow → orange → red), plan badges (Max 20x, Plus, …), and live "resets in 2h 38m" countdowns. Claude and OpenAI always show both their 5-hour and 7-day/weekly windows (an unreported window means 0% used); Gemini shows its per-tier daily windows — daily is the only window Google's quota API exposes.
 - **Pin from any row** — the pin button on each row controls what shows in the menu bar.
 - **Auto-refresh** — every 1/5/15/30 minutes (configurable in the gear menu), plus refresh-on-open and a manual refresh button. Transient network failures keep showing the last good data with a warning.
 - **Launch at Login** toggle (when running as the installed app).

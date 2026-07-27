@@ -133,18 +133,9 @@ actor GeminiClient {
             .joined(separator: " ")
     }
 
-    /// "2.5 Flash Lite" → "GFL"
-    static func compactModelCode(_ prettyName: String) -> String {
-        let initials = prettyName.split(separator: " ")
-            .filter { $0.first?.isNumber != true }
-            .compactMap { $0.first }
-        return "G" + String(initials)
-    }
-
     struct TierGroup: Equatable, Sendable {
         let key: String
         let label: String
-        let compact: String
         let order: Int
     }
 
@@ -154,16 +145,15 @@ actor GeminiClient {
     static func tierGroup(for modelId: String) -> TierGroup {
         let lower = modelId.lowercased()
         if lower.contains("flash-lite") {
-            return TierGroup(key: "flash-lite", label: "Flash Lite", compact: "GFL", order: 2)
+            return TierGroup(key: "flash-lite", label: "Flash Lite", order: 2)
         }
         if lower.contains("flash") {
-            return TierGroup(key: "flash", label: "Flash", compact: "GF", order: 1)
+            return TierGroup(key: "flash", label: "Flash", order: 1)
         }
         if lower.contains("pro") {
-            return TierGroup(key: "pro", label: "Pro", compact: "GP", order: 0)
+            return TierGroup(key: "pro", label: "Pro", order: 0)
         }
-        let pretty = prettyModelName(modelId)
-        return TierGroup(key: modelId, label: pretty, compact: compactModelCode(pretty), order: 3)
+        return TierGroup(key: modelId, label: prettyModelName(modelId), order: 3)
     }
 
     /// Groups raw buckets into per-tier metrics, keeping each group's lowest
@@ -186,7 +176,6 @@ actor GeminiClient {
                     id: "gemini.\(entry.group.key)",
                     provider: .gemini,
                     label: entry.group.label,
-                    compactCode: entry.group.compact,
                     sublabel: "daily",
                     usedPercent: (1 - entry.fraction) * 100,
                     resetsAt: entry.resetTime.flatMap(Timestamps.parseISO))

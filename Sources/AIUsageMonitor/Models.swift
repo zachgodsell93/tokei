@@ -43,10 +43,8 @@ enum AIProvider: String, CaseIterable, Codable, Identifiable, Sendable {
 struct UsageMetric: Identifiable, Equatable, Sendable {
     let id: String
     let provider: AIProvider
-    /// Row title in the popover, e.g. "5-hour limit" or "2.5 Pro".
+    /// Row title in the popover, e.g. "5-hour limit" or "Pro".
     let label: String
-    /// Compact form for the menu bar, e.g. "C5h".
-    let compactCode: String
     var sublabel: String?
     let usedPercent: Double
     var resetsAt: Date?
@@ -61,8 +59,6 @@ struct UsageMetric: Identifiable, Equatable, Sendable {
         default: return .red
         }
     }
-
-    var menuBarText: String { "\(compactCode) \(Int(clampedPercent.rounded()))%" }
 }
 
 struct ProviderSnapshot: Sendable {

@@ -39,11 +39,20 @@ struct MenuBarLabelView: View {
     @ObservedObject var store: UsageStore
 
     var body: some View {
-        if let summary = store.menuBarSummary {
-            Text(summary)
-                .font(.system(size: 12, weight: .medium).monospacedDigit())
-        } else {
+        let groups = store.menuBarGroups
+        if groups.isEmpty {
             Image(systemName: "gauge.with.needle")
+        } else {
+            HStack(spacing: 7) {
+                ForEach(groups) { group in
+                    HStack(spacing: 3) {
+                        ProviderLogo(provider: group.provider)
+                            .frame(width: 12, height: 12)
+                        Text(group.text)
+                            .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    }
+                }
+            }
         }
     }
 }
