@@ -61,7 +61,7 @@ Everything runs locally. Tokens are read from where the CLIs store them, request
 Requires macOS 14+ and Xcode (Swift 5.9+).
 
 ```sh
-git clone https://github.com/zachgodsell93/ai-usage-monitor.git tokei
+git clone https://github.com/zachgodsell93/tokei.git tokei
 cd tokei
 make install        # builds Tokei.app, copies it to /Applications, and opens it
 ```
