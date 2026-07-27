@@ -65,6 +65,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if abs(defaults.double(forKey: positionKey)) > 4000 {
             defaults.removeObject(forKey: positionKey)
         }
+        // On over-full menu bars (e.g. lots of iStat widgets), macOS appends
+        // new items to the clipped overflow end where they are never shown —
+        // even tiny icons like Dropbox's get hidden. Seeding a slot near the
+        // right-side system cluster makes the first launch land in the
+        // visible region; afterwards the user's own drag position (autosaved
+        // under the same key) wins.
+        if defaults.object(forKey: positionKey) == nil {
+            defaults.set(50.0, forKey: positionKey)
+        }
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem = item
