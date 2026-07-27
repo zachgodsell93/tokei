@@ -9,22 +9,22 @@ struct PopoverView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            ScrollView {
-                VStack(spacing: 10) {
-                    ForEach(store.orderedProviders) { provider in
-                        ProviderSectionView(store: store, provider: provider)
-                    }
-                    if store.orderedProviders.isEmpty {
-                        Text("All providers are hidden. Re-enable them from the gear menu.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.vertical, 24)
-                    }
+            // Deliberately not a ScrollView: content is bounded (one card per
+            // provider), and ScrollView content fails to render inside menu
+            // bar hosts on some macOS builds.
+            VStack(spacing: 10) {
+                ForEach(store.orderedProviders) { provider in
+                    ProviderSectionView(store: store, provider: provider)
                 }
-                .padding(12)
+                if store.orderedProviders.isEmpty {
+                    Text("All providers are hidden. Re-enable them from the gear menu.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.vertical, 24)
+                }
             }
-            .frame(maxHeight: 520)
+            .padding(12)
         }
         .frame(width: 336)
         .onAppear { store.refreshIfStale() }
