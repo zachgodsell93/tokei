@@ -20,9 +20,15 @@ if [ -f build/AppIcon.icns ]; then
         || /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon" "$APP/Contents/Info.plist"
 fi
 
-# Ad-hoc signature so macOS remembers the keychain "Always Allow" choice
-# across rebuilds.
-codesign --force --sign - "$APP"
+# Signing: ad-hoc by default (local dev); set CODESIGN_IDENTITY to a
+# "Developer ID Application: …" identity for distribution builds, which
+# also enables the hardened runtime notarization requires.
+IDENTITY="${CODESIGN_IDENTITY:--}"
+if [ "$IDENTITY" = "-" ]; then
+    codesign --force --sign - "$APP"
+else
+    codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
+fi
 
 echo "Built: $APP"
 echo "Install with: cp -R \"$APP\" /Applications/"

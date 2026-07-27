@@ -10,14 +10,59 @@ permissions:
 jobs:
   release:
     runs-on: macos-15
+    env:
+      # Signing/notarization activates automatically once the repo secrets
+      # exist; without them the release ships ad-hoc signed.
+      SIGNING_ENABLED: ${{ secrets.MACOS_CERT_P12 != '' && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Run tests
         run: swift test
 
+      - name: Import Developer ID certificate
+        if: env.SIGNING_ENABLED == 'true'
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
+        run: |
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          echo "$CERT_P12" | base64 --decode > cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -lut 3600 build.keychain
+          security import cert.p12 -k build.keychain -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain >/dev/null
+          rm cert.p12
+
+      - name: Build app
+        run: |
+          if [ "$SIGNING_ENABLED" = "true" ]; then
+            IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')
+            echo "Signing as: $IDENTITY"
+            CODESIGN_IDENTITY="$IDENTITY" bash scripts/build-app.sh
+          else
+            bash scripts/build-app.sh
+          fi
+
+      - name: Notarize and staple
+        if: env.SIGNING_ENABLED == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          ditto -c -k --keepParent "build/Tokei.app" build/Tokei.zip
+          xcrun notarytool submit build/Tokei.zip \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
+          xcrun stapler staple "build/Tokei.app"
+
       - name: Build DMG
-        run: bash scripts/build-dmg.sh
+        run: SKIP_BUILD=1 bash scripts/build-dmg.sh
 
       - name: Create GitHub release
         env:

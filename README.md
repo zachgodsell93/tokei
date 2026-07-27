@@ -101,10 +101,20 @@ make run            # run the debug build without installing
 Tag a version and push — GitHub Actions builds the DMG and attaches it to a release:
 
 ```sh
-git tag v1.0.0 && git push origin v1.0.0
+git tag v1.0.1 && git push origin v1.0.1
 ```
 
-The release build is ad-hoc signed. For Gatekeeper-clean installs, add Developer ID signing + notarization to `.github/workflows/release.yml` (requires an Apple Developer account).
+Signing + notarization activate automatically when these repo secrets exist (Settings → Secrets and variables → Actions, or `gh secret set`):
+
+| Secret | Value |
+|---|---|
+| `MACOS_CERT_P12` | Base64 of the exported "Developer ID Application" certificate (`base64 -i cert.p12`) |
+| `MACOS_CERT_P12_PASSWORD` | The password chosen when exporting the .p12 |
+| `APPLE_ID` | Apple ID email of the developer account |
+| `APPLE_TEAM_ID` | 10-character Team ID (developer.apple.com → Membership) |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password from account.apple.com → Sign-In & Security |
+
+With the secrets in place the workflow signs with the hardened runtime, notarizes via `notarytool`, staples the ticket, and ships a Gatekeeper-clean DMG. Without them it falls back to an ad-hoc signed build (right-click → Open required).
 
 ## Development
 
