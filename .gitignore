@@ -64,3 +64,6 @@ fastlane/test_output
 # App bundle output
 build/
 .DS_Store
+
+# Never commit signing certificates
+*.p12
