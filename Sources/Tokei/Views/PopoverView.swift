@@ -4,6 +4,7 @@ import SwiftUI
 
 struct PopoverView: View {
     @ObservedObject var store: UsageStore
+    var openSettings: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
@@ -107,7 +108,15 @@ struct PopoverView: View {
             .help("Refresh now")
             .disabled(store.isRefreshing)
 
-            SettingsMenu(store: store)
+            Button {
+                openSettings()
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+            .help("Open Tokei Settings")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
@@ -122,77 +131,3 @@ struct PopoverView: View {
     }
 }
 
-struct SettingsMenu: View {
-    @ObservedObject var store: UsageStore
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-
-    private var isBundledApp: Bool {
-        Bundle.main.bundleURL.pathExtension == "app"
-    }
-
-    var body: some View {
-        Menu {
-            Picker("Refresh every", selection: $store.pollMinutes) {
-                Text("1 minute").tag(1)
-                Text("5 minutes").tag(5)
-                Text("15 minutes").tag(15)
-                Text("30 minutes").tag(30)
-            }
-            .pickerStyle(.menu)
-
-            Section("Providers") {
-                ForEach(AIProvider.allCases) { provider in
-                    Toggle(provider.displayName, isOn: providerBinding(provider))
-                }
-            }
-
-            Divider()
-
-            if isBundledApp {
-                Toggle("Launch at Login", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, enable in
-                        do {
-                            if enable {
-                                try SMAppService.mainApp.register()
-                            } else {
-                                try SMAppService.mainApp.unregister()
-                            }
-                        } catch {
-                            launchAtLogin = SMAppService.mainApp.status == .enabled
-                        }
-                    }
-            }
-
-            Divider()
-
-            Button("Check for Updates") {
-                store.checkForUpdates(force: true)
-            }
-
-            Divider()
-
-            Button("Quit Tokei") {
-                NSApp.terminate(nil)
-            }
-            .keyboardShortcut("q")
-        } label: {
-            Image(systemName: "gearshape")
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("Settings")
-    }
-
-    private func providerBinding(_ provider: AIProvider) -> Binding<Bool> {
-        Binding(
-            get: { store.enabledProviders.contains(provider) },
-            set: { enabled in
-                if enabled {
-                    store.enabledProviders.insert(provider)
-                } else {
-                    store.enabledProviders.remove(provider)
-                }
-            })
-    }
-}

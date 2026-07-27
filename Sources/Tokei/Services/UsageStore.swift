@@ -12,6 +12,7 @@ final class UsageStore: ObservableObject {
 
     @Published private(set) var statuses: [AIProvider: ProviderStatus] = [:]
     @Published private(set) var updateState: UpdateState = .none
+    @Published private(set) var lastUpdateCheckedAt: Date?
     /// Transient fetch problems (network blips) shown as a warning while the
     /// last good snapshot stays on screen.
     @Published private(set) var staleNotes: [AIProvider: String] = [:]
@@ -101,6 +102,7 @@ final class UsageStore: ObservableObject {
             } else if force {
                 self?.updateState = .none
             }
+            self?.lastUpdateCheckedAt = .now
         }
     }
 

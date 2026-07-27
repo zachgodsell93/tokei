@@ -54,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
+    private var settingsWindow: NSWindow?
     private var store: UsageStore?
     private var labelSubscription: AnyCancellable?
 
@@ -99,7 +100,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         popover.behavior = .transient
         popover.animates = false
-        let host = NSHostingController(rootView: PopoverView(store: store))
+        let host = NSHostingController(rootView: PopoverView(
+            store: store,
+            openSettings: { [weak self] in self?.openSettings() }))
         host.sizingOptions = .preferredContentSize
         popover.contentViewController = host
 
@@ -163,6 +166,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func openSettings() {
+        guard let store else { return }
+        if settingsWindow == nil {
+            let host = NSHostingController(rootView: SettingsView(store: store))
+            let window = NSWindow(contentViewController: host)
+            window.title = "Tokei Settings"
+            window.styleMask = [.titled, .closable, .miniaturizable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            settingsWindow = window
+        }
+        popover.performClose(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
     // MARK: - Self test
 
     /// Captures the app's own live windows (status item + open popover) as
@@ -217,6 +236,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try? await Task.sleep(for: .milliseconds(600))
                 snapshot(view, to: "\(outputDir)/popover-dark.png",
                          background: NSColor(calibratedWhite: 0.13, alpha: 1))
+            }
+
+            // Settings window, one capture per tab.
+            openSettings()
+            try? await Task.sleep(for: .milliseconds(600))
+            if let window = settingsWindow, let store {
+                report.append("settingsWindow.visible: \(window.isVisible)")
+                for tab in SettingsView.Tab.allCases {
+                    let host = NSHostingController(
+                        rootView: SettingsView(store: store, initialTab: tab))
+                    window.contentViewController = host
+                    host.view.layoutSubtreeIfNeeded()
+                    try? await Task.sleep(for: .milliseconds(400))
+                    snapshot(host.view, to: "\(outputDir)/settings-\(tab.rawValue.lowercased()).png",
+                             background: NSColor(calibratedWhite: 0.97, alpha: 1))
+                }
+                window.close()
             }
 
             let metricCounts = AIProvider.allCases.map { provider -> String in
