@@ -24,6 +24,40 @@ final class DecodingTests: XCTestCase {
         XCTAssertNotNil(reset)
     }
 
+    func testAnthropicScopedLimits() throws {
+        let json = """
+        [
+          {"kind": "session", "group": "session", "percent": 22, "severity": "normal",
+           "resets_at": "2026-07-28T02:20:00.514673+00:00", "scope": null, "is_active": false},
+          {"kind": "weekly_all", "group": "weekly", "percent": 50, "severity": "normal",
+           "resets_at": "2026-07-28T01:00:00.514695+00:00", "scope": null, "is_active": false},
+          {"kind": "weekly_scoped", "group": "weekly", "percent": 85, "severity": "warning",
+           "resets_at": "2026-07-28T01:00:00.514980+00:00",
+           "scope": {"model": {"id": null, "display_name": "Fable"}, "surface": null},
+           "is_active": true}
+        ]
+        """
+        let limits = try JSONDecoder().decode(
+            [AnthropicClient.UsageResponse.Limit].self, from: Data(json.utf8))
+        let metrics = AnthropicClient.scopedMetrics(from: limits)
+        XCTAssertEqual(metrics.count, 1)
+        XCTAssertEqual(metrics.first?.id, "claude.limit.fable")
+        XCTAssertEqual(metrics.first?.label, "7-day · Fable")
+        XCTAssertEqual(metrics.first?.usedPercent, 85)
+        XCTAssertNotNil(metrics.first?.resetsAt)
+    }
+
+    // MARK: - Updates
+
+    func testUpdateVersionComparison() {
+        XCTAssertTrue(UpdateChecker.isNewer("v1.1.0", than: "1.0.0"))
+        XCTAssertTrue(UpdateChecker.isNewer("1.0.1", than: "1.0.0"))
+        XCTAssertTrue(UpdateChecker.isNewer("v2.0", than: "1.9.9"))
+        XCTAssertFalse(UpdateChecker.isNewer("v1.0.0", than: "1.0.0"))
+        XCTAssertFalse(UpdateChecker.isNewer("v0.9.9", than: "1.0.0"))
+        XCTAssertFalse(UpdateChecker.isNewer("v1.0", than: "1.0.0"))
+    }
+
     func testAnthropicProfileDecoding() throws {
         let json = """
         {

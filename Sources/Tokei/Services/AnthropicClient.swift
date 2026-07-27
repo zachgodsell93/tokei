@@ -28,10 +28,46 @@ actor AnthropicClient {
             let utilization: Double?
             let resets_at: String?
         }
+        struct Limit: Decodable {
+            struct Scope: Decodable {
+                struct Model: Decodable {
+                    let display_name: String?
+                }
+                let model: Model?
+                let surface: String?
+            }
+            let kind: String?
+            let group: String?
+            let percent: Double?
+            let resets_at: String?
+            let scope: Scope?
+        }
         let five_hour: Window?
         let seven_day: Window?
         let seven_day_opus: Window?
         let seven_day_sonnet: Window?
+        let limits: [Limit]?
+    }
+
+    /// Model/surface-scoped limits (e.g. the Fable weekly cap) arrive in the
+    /// `limits` array rather than as named fields; session and weekly_all
+    /// duplicate `five_hour`/`seven_day`, everything else becomes a row.
+    static func scopedMetrics(from limits: [UsageResponse.Limit]) -> [UsageMetric] {
+        limits.compactMap { limit -> UsageMetric? in
+            guard let kind = limit.kind, let percent = limit.percent,
+                  kind != "session", kind != "weekly_all" else { return nil }
+            let scopeName = limit.scope?.model?.display_name ?? limit.scope?.surface
+            let name = scopeName
+                ?? kind.replacingOccurrences(of: "_", with: " ").capitalized
+            let idSuffix = (scopeName ?? kind).lowercased()
+                .replacingOccurrences(of: " ", with: "_")
+            return UsageMetric(
+                id: "claude.limit.\(idSuffix)",
+                provider: .claude,
+                label: limit.group == "weekly" ? "7-day · \(name)" : name,
+                usedPercent: percent,
+                resetsAt: limit.resets_at.flatMap(Timestamps.parseISO))
+        }
     }
 
     struct ProfileResponse: Decodable {
@@ -111,6 +147,7 @@ actor AnthropicClient {
         add(usage.seven_day, id: "claude.seven_day", label: "7-day limit")
         add(usage.seven_day_opus, id: "claude.seven_day_opus", label: "7-day · Opus")
         add(usage.seven_day_sonnet, id: "claude.seven_day_sonnet", label: "7-day · Sonnet")
+        metrics.append(contentsOf: Self.scopedMetrics(from: usage.limits ?? []))
         snapshot.metrics = metrics
 
         if cachedProfile == nil {

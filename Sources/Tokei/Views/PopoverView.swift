@@ -9,6 +9,7 @@ struct PopoverView: View {
         VStack(spacing: 0) {
             header
             Divider()
+            updateBanner
             // Deliberately not a ScrollView: content is bounded (one card per
             // provider), and ScrollView content fails to render inside menu
             // bar hosts on some macOS builds.
@@ -29,6 +30,54 @@ struct PopoverView: View {
         .frame(width: 336)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear { store.refreshIfStale() }
+    }
+
+    @ViewBuilder
+    private var updateBanner: some View {
+        switch store.updateState {
+        case .none:
+            EmptyView()
+        case .available(let info):
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .foregroundStyle(Color.accentColor)
+                Text("Tokei \(info.version) is available")
+                    .font(.caption)
+                Spacer()
+                Button("Install") { store.installUpdate() }
+                    .controlSize(.small)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Color.accentColor.opacity(0.08))
+        case .installing:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Installing update — Tokei will relaunch…")
+                    .font(.caption)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Color.accentColor.opacity(0.08))
+        case .failed(let message, let info):
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                    .font(.caption)
+                Text(message)
+                    .font(.caption)
+                    .lineLimit(2)
+                Spacer()
+                if let page = info.pageURL {
+                    Button("Open release") { NSWorkspace.shared.open(page) }
+                        .controlSize(.small)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Color.yellow.opacity(0.08))
+        }
     }
 
     private var header: some View {
@@ -112,6 +161,12 @@ struct SettingsMenu: View {
                             launchAtLogin = SMAppService.mainApp.status == .enabled
                         }
                     }
+            }
+
+            Divider()
+
+            Button("Check for Updates") {
+                store.checkForUpdates(force: true)
             }
 
             Divider()

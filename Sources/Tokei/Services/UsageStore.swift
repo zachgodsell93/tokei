@@ -3,7 +3,15 @@ import SwiftUI
 
 @MainActor
 final class UsageStore: ObservableObject {
+    enum UpdateState: Equatable {
+        case none
+        case available(UpdateInfo)
+        case installing
+        case failed(String, UpdateInfo)
+    }
+
     @Published private(set) var statuses: [AIProvider: ProviderStatus] = [:]
+    @Published private(set) var updateState: UpdateState = .none
     /// Transient fetch problems (network blips) shown as a warning while the
     /// last good snapshot stays on screen.
     @Published private(set) var staleNotes: [AIProvider: String] = [:]
@@ -51,6 +59,7 @@ final class UsageStore: ObservableObject {
     private let openai = OpenAIClient()
     private let gemini = GeminiClient()
     private var pollTask: Task<Void, Never>?
+    private var lastUpdateCheck: Date?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -72,7 +81,38 @@ final class UsageStore: ObservableObject {
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshAll()
+                self?.checkForUpdates()
                 try? await Task.sleep(for: .seconds(interval * 60))
+            }
+        }
+    }
+
+    // MARK: - Updates
+
+    /// Throttled to twice a day unless forced from the gear menu.
+    func checkForUpdates(force: Bool = false) {
+        if case .installing = updateState { return }
+        if !force, let last = lastUpdateCheck,
+           Date.now.timeIntervalSince(last) < 12 * 3600 { return }
+        lastUpdateCheck = .now
+        Task { [weak self] in
+            if let info = await UpdateChecker.check() {
+                self?.updateState = .available(info)
+            } else if force {
+                self?.updateState = .none
+            }
+        }
+    }
+
+    func installUpdate() {
+        guard case .available(let info) = updateState else { return }
+        updateState = .installing
+        Task { [weak self] in
+            do {
+                try await UpdateInstaller.install(info)
+                UpdateInstaller.relaunch()
+            } catch {
+                self?.updateState = .failed(error.localizedDescription, info)
             }
         }
     }

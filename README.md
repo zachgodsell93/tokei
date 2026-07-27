@@ -33,7 +33,7 @@ Tokei reads the credentials your local CLIs are already signed in with — no AP
 
 | Provider | Metrics | Source |
 |---|---|---|
-| **Claude** (Anthropic) | 5-hour and 7-day limits (plus per-model 7-day limits when reported) | Claude Code's OAuth token → the same endpoint as `/usage` |
+| **Claude** (Anthropic) | 5-hour and 7-day limits, plus model-scoped weekly limits (e.g. Fable, Opus) when your plan reports them | Claude Code's OAuth token → the same endpoint as `/usage` |
 | **OpenAI** (Codex) | 5-hour and weekly rate-limit windows, plan, credits | `~/.codex/auth.json` → the endpoint behind Codex's `/status` |
 | **Gemini** (Google) | Per-tier daily quota (Pro / Flash / Flash Lite) | `~/.gemini/oauth_creds.json` → Code Assist quota API |
 
@@ -45,6 +45,7 @@ Everything runs locally. Tokens are read from where the CLIs store them, request
 - **Dashboard popover** — per-provider cards with color-coded usage bars (green → yellow → orange → red), plan badges (Max 20x, Plus, …), and live "resets in 2h 38m" countdowns.
 - **Both windows, always** — Claude and OpenAI always show their 5-hour and 7-day/weekly windows (an unreported window means 0% used). Gemini shows daily windows — the only kind Google's quota API has.
 - **Auto-refresh** — every 1/5/15/30 minutes plus refresh-on-open. Transient failures (including provider rate limits) keep the last good data on screen with a warning, and failed fetches retry automatically.
+- **In-app updates** — Tokei checks GitHub Releases twice a day (and via gear menu → Check for Updates); when a new version ships, a banner appears in the popover and one click downloads, installs, and relaunches.
 - **Launch at Login**, per-provider show/hide, graceful "not signed in" hints.
 
 ## Install
