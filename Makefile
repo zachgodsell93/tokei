@@ -16,6 +16,10 @@ run: build
 app:
 	bash scripts/build-app.sh
 
+# Distributable disk image (build/AI-Usage-Monitor-<version>.dmg)
+dmg:
+	bash scripts/build-dmg.sh
+
 install: app
 	rm -rf "/Applications/AI Usage Monitor.app"
 	cp -R "build/AI Usage Monitor.app" /Applications/
