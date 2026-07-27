@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds a distributable DMG: build/AI-Usage-Monitor-<version>.dmg
+# Builds a distributable DMG: build/Tokei-<version>.dmg
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -10,12 +10,12 @@ bash scripts/build-app.sh
 STAGING="build/dmg-staging"
 rm -rf "$STAGING"
 mkdir -p "$STAGING"
-cp -R "build/AI Usage Monitor.app" "$STAGING/"
+cp -R "build/Tokei.app" "$STAGING/"
 ln -s /Applications "$STAGING/Applications"
 
-DMG="build/AI-Usage-Monitor-$VERSION.dmg"
+DMG="build/Tokei-$VERSION.dmg"
 rm -f "$DMG"
-hdiutil create -volname "AI Usage Monitor" -srcfolder "$STAGING" -ov -format UDZO "$DMG" >/dev/null
+hdiutil create -volname "Tokei" -srcfolder "$STAGING" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGING"
 
 echo "Built: $DMG"

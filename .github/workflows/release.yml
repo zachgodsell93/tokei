@@ -24,6 +24,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
-            --title "AI Usage Monitor ${GITHUB_REF_NAME}" \
+            --title "Tokei ${GITHUB_REF_NAME}" \
             --generate-notes \
-            build/AI-Usage-Monitor-*.dmg
+            build/Tokei-*.dmg

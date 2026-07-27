@@ -20,11 +20,13 @@ enum Main {
             RenderCommand.run(target: .popover, path: arguments[index + 1])
         }
         if let index = arguments.firstIndex(of: "--render-label"), arguments.count > index + 1 {
-            RenderCommand.run(target: .label, path: arguments[index + 1])
+            let dark = arguments.count > index + 2 && arguments[index + 2] == "dark"
+            RenderCommand.run(target: .label(dark: dark), path: arguments[index + 1])
         }
         if let index = arguments.firstIndex(of: "--self-test"), arguments.count > index + 1 {
             AppDelegate.selfTestDir = arguments[index + 1]
         }
+        AppDelegate.demoMode = arguments.contains("--demo")
 
         let app = NSApplication.shared
         let delegate = AppDelegate()
@@ -46,6 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// When set, the app snapshots its live status-item and popover windows
     /// into this directory shortly after launch, then exits.
     static var selfTestDir: String?
+    /// Factory settings in an ephemeral defaults suite — for screenshots —
+    /// leaving the user's real preferences untouched.
+    static var demoMode = false
 
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
@@ -53,15 +58,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var labelSubscription: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let store = UsageStore()
+        let defaults = UserDefaults.standard
+        let store: UsageStore
+        if Self.demoMode {
+            let suiteName = "com.zachgodsell.tokei.demo"
+            let demo = UserDefaults(suiteName: suiteName)!
+            demo.removePersistentDomain(forName: suiteName)
+            store = UsageStore(defaults: demo)
+        } else {
+            // Migrate before the store reads its settings.
+            migrateLegacyPreferences(into: defaults)
+            store = UsageStore()
+        }
         self.store = store
 
         // A stale saved position (inherited from the earlier MenuBarExtra
         // builds' "Item-0" autosave) can park the item thousands of points
         // off-screen. Purge legacy/bogus positions before creating the item.
-        let defaults = UserDefaults.standard
         defaults.removeObject(forKey: "NSStatusItem Preferred Position Item-0")
-        let positionKey = "NSStatusItem Preferred Position AIUsageMonitor"
+        let positionKey = "NSStatusItem Preferred Position Tokei"
         if abs(defaults.double(forKey: positionKey)) > 4000 {
             defaults.removeObject(forKey: positionKey)
         }
@@ -77,10 +92,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem = item
-        item.autosaveName = "AIUsageMonitor"
+        item.autosaveName = "Tokei"
         item.button?.target = self
         item.button?.action = #selector(togglePopover)
-        item.button?.toolTip = "AI Usage Monitor"
+        item.button?.toolTip = "Tokei"
 
         popover.behavior = .transient
         popover.animates = false
@@ -106,6 +121,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // 1Password, etc. show the same), so there is no reliable signal for
     // "macOS hid my item" — a ladder keyed on it degrades a perfectly
     // visible label to an icon.
+    /// One-time import of settings saved under the app's previous identity
+    /// (bundle id com.zachgodsell.ai-usage-monitor, before it became Tokei).
+    private func migrateLegacyPreferences(into defaults: UserDefaults) {
+        let migratedKey = "didMigrateLegacyPrefs"
+        guard !defaults.bool(forKey: migratedKey) else { return }
+        defaults.set(true, forKey: migratedKey)
+        guard let legacy = UserDefaults(suiteName: "com.zachgodsell.ai-usage-monitor") else { return }
+        let mappings: [(from: String, to: String)] = [
+            ("pollMinutes", "pollMinutes"),
+            ("enabledProviders", "enabledProviders"),
+            ("pinnedMetricsV2", "pinnedMetricsV2"),
+            ("NSStatusItem Preferred Position AIUsageMonitor", "NSStatusItem Preferred Position Tokei"),
+        ]
+        for mapping in mappings where defaults.object(forKey: mapping.to) == nil {
+            if let value = legacy.object(forKey: mapping.from) {
+                defaults.set(value, forKey: mapping.to)
+            }
+        }
+    }
+
     private func updateLabel() {
         guard let button = statusItem?.button, let store else { return }
         if let image = MenuBarLabelRenderer.image(for: store.menuBarGroups) {
@@ -113,7 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             button.image = NSImage(
                 systemSymbolName: "gauge.with.needle",
-                accessibilityDescription: "AI Usage Monitor")
+                accessibilityDescription: "Tokei")
         }
     }
 
@@ -162,17 +197,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 report.append("statusItem: MISSING")
             }
 
-            // Snapshots lose the window's vibrancy backdrop, which makes
-            // dark-mode (white) text unreadable on the transparent-rendered
-            // background — pin the popover to light appearance for capture.
+            // Snapshots lose the window's vibrancy backdrop, so each capture
+            // is composited over an opaque background matching its
+            // appearance (white text on transparent reads as blank).
             popover.appearance = NSAppearance(named: .aqua)
             togglePopover()
             try? await Task.sleep(for: .seconds(1))
             report.append("popover.isShown: \(popover.isShown)")
             if let view = popover.contentViewController?.view {
+                view.appearance = NSAppearance(named: .aqua)
                 view.layoutSubtreeIfNeeded()
                 report.append("popover.viewSize: \(view.bounds.size)")
-                snapshot(view, to: "\(outputDir)/popover-live.png")
+                snapshot(view, to: "\(outputDir)/popover-light.png",
+                         background: NSColor(calibratedWhite: 0.97, alpha: 1))
+            }
+            if let view = popover.contentViewController?.view {
+                view.appearance = NSAppearance(named: .darkAqua)
+                view.layoutSubtreeIfNeeded()
+                try? await Task.sleep(for: .milliseconds(600))
+                snapshot(view, to: "\(outputDir)/popover-dark.png",
+                         background: NSColor(calibratedWhite: 0.13, alpha: 1))
             }
 
             let metricCounts = AIProvider.allCases.map { provider -> String in
@@ -187,16 +231,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func snapshot(_ view: NSView, to path: String) {
+    private func snapshot(_ view: NSView, to path: String,
+                          background: NSColor = NSColor(calibratedWhite: 0.35, alpha: 1)) {
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
         view.cacheDisplay(in: view.bounds, to: rep)
-        // Composite over a mid-gray backdrop: window snapshots lose the
+        // Composite over an opaque backdrop: window snapshots lose the
         // vibrancy backing, which would leave template/white content
         // invisible on the PNG's default white.
         let size = view.bounds.size
         let composed = NSImage(size: size)
         composed.lockFocus()
-        NSColor(calibratedWhite: 0.35, alpha: 1).setFill()
+        background.setFill()
         NSRect(origin: .zero, size: size).fill()
         rep.draw(in: NSRect(origin: .zero, size: size))
         composed.unlockFocus()
@@ -255,7 +300,7 @@ enum CheckCommand {
 /// Offscreen UI verification: renders the popover or menu bar label with
 /// live data straight to a PNG — no screen recording permission needed.
 enum RenderCommand {
-    enum Target { case popover, label }
+    enum Target { case popover, label(dark: Bool) }
 
     static func run(target: Target, path: String) -> Never {
         Task { @MainActor in
@@ -268,11 +313,12 @@ enum RenderCommand {
                 renderer = ImageRenderer(content: AnyView(
                     PopoverView(store: store).frame(width: 336)))
                 renderer.proposedSize = ProposedViewSize(width: 336, height: nil)
-            case .label:
+            case .label(let dark):
                 renderer = ImageRenderer(content: AnyView(
-                    MenuBarLabelContent(groups: store.menuBarGroups)
-                        .padding(4)
-                        .background(Color.white)))
+                    MenuBarLabelContent(groups: store.menuBarGroups, tint: dark ? .white : .black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(dark ? Color(white: 0.13) : Color(white: 0.96))))
             }
             renderer.scale = 2
 

@@ -32,11 +32,11 @@ enum HTTP {
     }
 }
 
-/// Append-only debug log at ~/Library/Caches/AIUsageMonitor.log recording
-/// each fetch outcome — the app has no console when launched normally.
+/// Append-only debug log at ~/Library/Caches/Tokei.log recording each fetch
+/// outcome — the app has no console when launched normally.
 enum Diagnostics {
     static let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("AIUsageMonitor.log")
+        .appendingPathComponent("Tokei.log")
     private static let queue = DispatchQueue(label: "diagnostics")
 
     static func log(_ line: String) {

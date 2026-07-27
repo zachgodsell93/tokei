@@ -27,12 +27,13 @@ struct PopoverView: View {
             .padding(12)
         }
         .frame(width: 336)
+        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear { store.refreshIfStale() }
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text("AI Usage")
+            Text("Tokei")
                 .font(.headline)
             Spacer()
             if let last = store.lastRefreshed {
@@ -115,7 +116,7 @@ struct SettingsMenu: View {
 
             Divider()
 
-            Button("Quit AI Usage Monitor") {
+            Button("Quit Tokei") {
                 NSApp.terminate(nil)
             }
             .keyboardShortcut("q")

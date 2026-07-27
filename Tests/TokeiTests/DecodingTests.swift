@@ -1,5 +1,5 @@
 import XCTest
-@testable import AIUsageMonitor
+@testable import Tokei
 
 final class DecodingTests: XCTestCase {
 

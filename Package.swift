@@ -2,16 +2,16 @@
 import PackageDescription
 
 let package = Package(
-    name: "AIUsageMonitor",
+    name: "Tokei",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "AIUsageMonitor",
+            name: "Tokei",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
-            name: "AIUsageMonitorTests",
-            dependencies: ["AIUsageMonitor"],
+            name: "TokeiTests",
+            dependencies: ["Tokei"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]

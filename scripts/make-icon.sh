@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Converts Assets/logo.png (square, ideally 1024x1024) into AppIcon.icns.
+# Converts Assets/tokei-icon-512.png into AppIcon.icns.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-SRC="Assets/logo.png"
+SRC="Assets/tokei-icon-512.png"
 OUT="build/AppIcon.icns"
 if [ ! -f "$SRC" ]; then
     echo "No $SRC found — skipping icon generation."

@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>AI Usage Monitor</string>
+	<string>Tokei</string>
 	<key>CFBundleDisplayName</key>
-	<string>AI Usage Monitor</string>
+	<string>Tokei</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.zachgodsell.ai-usage-monitor</string>
+	<string>com.zachgodsell.tokei</string>
 	<key>CFBundleExecutable</key>
-	<string>AIUsageMonitor</string>
+	<string>Tokei</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

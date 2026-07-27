@@ -1,4 +1,4 @@
-.PHONY: build test check run app install clean
+.PHONY: build test check run app dmg install clean
 
 build:
 	swift build
@@ -8,22 +8,22 @@ test:
 
 # Headless verification: fetches live usage from every connected provider.
 check: build
-	.build/debug/AIUsageMonitor --check
+	.build/debug/Tokei --check
 
 run: build
-	.build/debug/AIUsageMonitor
+	.build/debug/Tokei
 
 app:
 	bash scripts/build-app.sh
 
-# Distributable disk image (build/AI-Usage-Monitor-<version>.dmg)
+# Distributable disk image (build/Tokei-<version>.dmg)
 dmg:
 	bash scripts/build-dmg.sh
 
 install: app
-	rm -rf "/Applications/AI Usage Monitor.app"
-	cp -R "build/AI Usage Monitor.app" /Applications/
-	open "/Applications/AI Usage Monitor.app"
+	rm -rf /Applications/Tokei.app
+	cp -R build/Tokei.app /Applications/
+	open /Applications/Tokei.app
 
 clean:
 	rm -rf .build build

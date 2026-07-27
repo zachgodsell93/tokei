@@ -7,6 +7,9 @@ import SwiftUI
 /// view is rasterized into a template NSImage before it reaches the bar.
 struct MenuBarLabelContent: View {
     let groups: [UsageStore.MenuBarGroup]
+    /// Template rendering only uses alpha, so black is right for the real
+    /// menu bar; screenshot renders pass white for dark backgrounds.
+    var tint: Color = .black
 
     var body: some View {
         HStack(spacing: 8) {
@@ -19,8 +22,7 @@ struct MenuBarLabelContent: View {
                 }
             }
         }
-        // Template images only use the alpha channel; draw solid.
-        .foregroundStyle(.black)
+        .foregroundStyle(tint)
         .padding(.horizontal, 2)
         .frame(height: 18)
         .fixedSize()
