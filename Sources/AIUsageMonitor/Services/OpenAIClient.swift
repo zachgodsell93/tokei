@@ -27,17 +27,57 @@ struct OpenAIClient: Sendable {
             let reset_after_seconds: Double?
         }
         struct RateLimit: Decodable {
+            let allowed: Bool?
+            let limit_reached: Bool?
             let primary_window: Window?
             let secondary_window: Window?
+        }
+        struct AdditionalRateLimit: Decodable {
+            let limit_name: String?
+            let rate_limit: RateLimit?
         }
         struct Credits: Decodable {
             let has_credits: Bool?
             let balance: String?
+
+            private enum CodingKeys: String, CodingKey {
+                case has_credits, balance
+            }
+
+            init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                has_credits = try? container.decode(Bool.self, forKey: .has_credits)
+                // The server has shipped balance as both a string and a
+                // number at different times — accept either.
+                if let text = try? container.decode(String.self, forKey: .balance) {
+                    balance = text
+                } else if let value = try? container.decode(Double.self, forKey: .balance) {
+                    balance = value == value.rounded() ? String(Int(value)) : String(value)
+                } else {
+                    balance = nil
+                }
+            }
         }
         let plan_type: String?
         let email: String?
         let rate_limit: RateLimit?
+        let additional_rate_limits: [AdditionalRateLimit]?
         let credits: Credits?
+    }
+
+    /// Extracts the `exp` claim from a JWT so an expired token surfaces as a
+    /// clear "re-authenticate" state instead of an opaque 401.
+    static func jwtExpiry(_ token: String) -> Date? {
+        let parts = token.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var base64 = parts[1]
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while base64.count % 4 != 0 { base64 += "=" }
+        guard let data = Data(base64Encoded: base64),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let exp = payload["exp"] as? Double else { return nil }
+        return Date(timeIntervalSince1970: exp)
     }
 
     /// "5-hour limit" for a ~5h window, "Weekly limit" for ~7d, otherwise a
@@ -61,15 +101,21 @@ struct OpenAIClient: Sendable {
             throw ProviderError.notConnected(AIProvider.openai.setupHint)
         }
 
+        // Codex CLI access tokens live ~10 days and the CLI refreshes them on
+        // use. Refresh tokens rotate server-side, so refreshing here could
+        // invalidate the CLI's copy — instead, surface expiry and let the
+        // CLI do the refreshing.
+        if let expiry = Self.jwtExpiry(tokens.access_token), expiry < .now {
+            throw ProviderError.tokenExpired(
+                "Codex token expired — run any codex command to refresh it.")
+        }
+
         var request = URLRequest(url: Self.usageURL)
         request.setValue("Bearer \(tokens.access_token)", forHTTPHeaderField: "Authorization")
         if let accountID = tokens.account_id {
+            // Scopes the query to the right workspace on team/business plans.
             request.setValue(accountID, forHTTPHeaderField: "chatgpt-account-id")
         }
-        // chatgpt.com's edge only accepts requests that identify as the
-        // Codex CLI; a generic User-Agent gets a 403 block page.
-        request.setValue("codex_cli_rs", forHTTPHeaderField: "originator")
-        request.setValue("codex_cli_rs/0.142.5 (AIUsageMonitor; macOS)", forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let usage: UsageResponse
@@ -84,7 +130,7 @@ struct OpenAIClient: Sendable {
         snapshot.planLabel = usage.plan_type?.capitalized
         snapshot.accountLabel = usage.email
 
-        func add(_ window: UsageResponse.Window?, id: String) {
+        func add(_ window: UsageResponse.Window?, id: String, sublabel: String? = nil) {
             guard let window, let used = window.used_percent,
                   let seconds = window.limit_window_seconds else { return }
             let (label, compact) = Self.windowLabel(seconds: seconds)
@@ -99,6 +145,7 @@ struct OpenAIClient: Sendable {
                 provider: .openai,
                 label: label,
                 compactCode: compact,
+                sublabel: sublabel,
                 usedPercent: used,
                 resetsAt: resetsAt))
         }
@@ -106,8 +153,23 @@ struct OpenAIClient: Sendable {
         add(usage.rate_limit?.primary_window, id: "openai.primary")
         add(usage.rate_limit?.secondary_window, id: "openai.secondary")
 
+        // Model-specific limits (e.g. Spark) arrive as named extra rate limits.
+        for extra in usage.additional_rate_limits ?? [] {
+            guard let limit = extra.rate_limit else { continue }
+            let name = extra.limit_name ?? "extra"
+            add(limit.primary_window, id: "openai.\(name).primary", sublabel: name)
+            add(limit.secondary_window, id: "openai.\(name).secondary", sublabel: name)
+        }
+
+        var notes: [String] = []
+        if usage.rate_limit?.limit_reached == true {
+            notes.append("Rate limit reached.")
+        }
         if usage.credits?.has_credits == true, let balance = usage.credits?.balance {
-            snapshot.note = "Credits balance: \(balance)"
+            notes.append("Credits balance: \(balance)")
+        }
+        if !notes.isEmpty {
+            snapshot.note = notes.joined(separator: " ")
         }
         return snapshot
     }

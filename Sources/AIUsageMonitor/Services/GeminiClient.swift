@@ -83,6 +83,7 @@ actor GeminiClient {
 
     private var cachedToken: (value: String, expiresAt: Date)?
     private var cachedTierName: String?
+    private var cachedNote: String?
     private var tierLookupDone = false
 
     struct OAuthCreds: Decodable {
@@ -102,6 +103,7 @@ actor GeminiClient {
             let tokenType: String?
             let modelId: String?
             let remainingFraction: Double?
+            let remainingAmount: String?
         }
         let buckets: [Bucket]?
     }
@@ -111,6 +113,7 @@ actor GeminiClient {
             let name: String?
             let isDefault: Bool?
         }
+        let currentTier: Tier?
         let allowedTiers: [Tier]?
     }
 
@@ -136,6 +139,58 @@ actor GeminiClient {
             .filter { $0.first?.isNumber != true }
             .compactMap { $0.first }
         return "G" + String(initials)
+    }
+
+    struct TierGroup: Equatable, Sendable {
+        let key: String
+        let label: String
+        let compact: String
+        let order: Int
+    }
+
+    /// Several modelIds draw from one quota pool, so — like the Gemini CLI's
+    /// own quota display — buckets are grouped by model tier and the group
+    /// reports the *minimum* remaining fraction.
+    static func tierGroup(for modelId: String) -> TierGroup {
+        let lower = modelId.lowercased()
+        if lower.contains("flash-lite") {
+            return TierGroup(key: "flash-lite", label: "Flash Lite", compact: "GFL", order: 2)
+        }
+        if lower.contains("flash") {
+            return TierGroup(key: "flash", label: "Flash", compact: "GF", order: 1)
+        }
+        if lower.contains("pro") {
+            return TierGroup(key: "pro", label: "Pro", compact: "GP", order: 0)
+        }
+        let pretty = prettyModelName(modelId)
+        return TierGroup(key: modelId, label: pretty, compact: compactModelCode(pretty), order: 3)
+    }
+
+    /// Groups raw buckets into per-tier metrics, keeping each group's lowest
+    /// remaining fraction (and that bucket's reset time). `tokenType` is not
+    /// an enum server-side, so buckets are not filtered by it.
+    static func metrics(from buckets: [QuotaResponse.Bucket]) -> [UsageMetric] {
+        var worst: [String: (group: TierGroup, fraction: Double, resetTime: String?)] = [:]
+        for bucket in buckets {
+            guard let modelId = bucket.modelId, let fraction = bucket.remainingFraction else {
+                continue
+            }
+            let group = tierGroup(for: modelId)
+            if let existing = worst[group.key], existing.fraction <= fraction { continue }
+            worst[group.key] = (group, fraction, bucket.resetTime)
+        }
+        return worst.values
+            .sorted { ($0.group.order, $0.group.label) < ($1.group.order, $1.group.label) }
+            .map { entry in
+                UsageMetric(
+                    id: "gemini.\(entry.group.key)",
+                    provider: .gemini,
+                    label: entry.group.label,
+                    compactCode: entry.group.compact,
+                    sublabel: "daily",
+                    usedPercent: (1 - entry.fraction) * 100,
+                    resetsAt: entry.resetTime.flatMap(Timestamps.parseISO))
+            }
     }
 
     private func accessToken() async throws -> String {
@@ -200,33 +255,26 @@ actor GeminiClient {
             jsonRequest(Self.quotaURL, token: token, body: Data("{}".utf8)))
 
         var snapshot = ProviderSnapshot(provider: .gemini)
-        let buckets = (quota.buckets ?? []).filter { $0.tokenType == "REQUESTS" }
-        snapshot.metrics = buckets.compactMap { bucket -> UsageMetric? in
-            guard let modelId = bucket.modelId, let remaining = bucket.remainingFraction else {
-                return nil
-            }
-            let pretty = Self.prettyModelName(modelId)
-            return UsageMetric(
-                id: "gemini.\(modelId)",
-                provider: .gemini,
-                label: pretty,
-                compactCode: Self.compactModelCode(pretty),
-                sublabel: "daily",
-                usedPercent: (1 - remaining) * 100,
-                resetsAt: bucket.resetTime.flatMap(Timestamps.parseISO))
-        }
-        .sorted { $0.label < $1.label }
+        snapshot.metrics = Self.metrics(from: quota.buckets ?? [])
 
         if !tierLookupDone {
             tierLookupDone = true
             let body = Data(#"{"metadata":{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}}"#.utf8)
             if let load: LoadResponse = try? await HTTP.send(
                 jsonRequest(Self.loadURL, token: token, body: body)) {
-                cachedTierName = load.allowedTiers?.first(where: { $0.isDefault == true })?.name
+                cachedTierName = load.currentTier?.name
+                    ?? load.allowedTiers?.first(where: { $0.isDefault == true })?.name
                     ?? load.allowedTiers?.first?.name
+                // No currentTier means the account isn't onboarded to Code
+                // Assist (e.g. consumer accounts after the June 2026 cutoff);
+                // the quota endpoint still answers, but nothing draws it down.
+                if load.currentTier == nil {
+                    cachedNote = "Account isn't onboarded to Code Assist — quota may not reflect real limits."
+                }
             }
         }
         snapshot.planLabel = cachedTierName
+        snapshot.note = cachedNote
 
         if let data = try? Data(contentsOf: Self.accountsFile),
            let accounts = try? JSONDecoder().decode(Accounts.self, from: data) {

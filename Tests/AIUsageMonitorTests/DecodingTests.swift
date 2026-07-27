@@ -69,6 +69,37 @@ final class DecodingTests: XCTestCase {
         XCTAssertEqual(usage.rate_limit?.secondary_window?.limit_window_seconds, 604800)
     }
 
+    func testOpenAICreditsBalanceStringOrNumber() throws {
+        let asString = try JSONDecoder().decode(
+            OpenAIClient.UsageResponse.Credits.self,
+            from: Data(#"{"has_credits": true, "balance": "12"}"#.utf8))
+        XCTAssertEqual(asString.balance, "12")
+
+        let asNumber = try JSONDecoder().decode(
+            OpenAIClient.UsageResponse.Credits.self,
+            from: Data(#"{"has_credits": true, "balance": 12.5}"#.utf8))
+        XCTAssertEqual(asNumber.balance, "12.5")
+
+        let missing = try JSONDecoder().decode(
+            OpenAIClient.UsageResponse.Credits.self,
+            from: Data(#"{"has_credits": false}"#.utf8))
+        XCTAssertNil(missing.balance)
+    }
+
+    func testJWTExpiryParsing() {
+        // {"exp": 1785842516} with a dummy header/signature.
+        let payload = Data(#"{"exp":1785842516,"iat":1784978516}"#.utf8)
+            .base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let token = "eyJhbGciOiJSUzI1NiJ9.\(payload).sig"
+        XCTAssertEqual(
+            OpenAIClient.jwtExpiry(token),
+            Date(timeIntervalSince1970: 1_785_842_516))
+        XCTAssertNil(OpenAIClient.jwtExpiry("not-a-jwt"))
+    }
+
     func testOpenAIWindowLabels() {
         XCTAssertEqual(OpenAIClient.windowLabel(seconds: 18000).label, "5-hour limit")
         XCTAssertEqual(OpenAIClient.windowLabel(seconds: 18000).compact, "O5h")
@@ -85,17 +116,41 @@ final class DecodingTests: XCTestCase {
           "buckets": [
             {"resetTime": "2026-07-28T00:02:18Z", "tokenType": "REQUESTS",
              "modelId": "gemini-2.5-pro", "remainingFraction": 0.25},
-            {"resetTime": "2026-07-28T00:02:18Z", "tokenType": "TOKENS",
-             "modelId": "gemini-2.5-pro", "remainingFraction": 1}
+            {"resetTime": "2026-07-28T00:02:18Z", "tokenType": "REQUESTS",
+             "modelId": "gemini-2.5-flash", "remainingFraction": 1,
+             "remainingAmount": "1000"}
           ]
         }
         """
         let quota = try JSONDecoder().decode(
             GeminiClient.QuotaResponse.self, from: Data(json.utf8))
         XCTAssertEqual(quota.buckets?.count, 2)
-        let requests = quota.buckets?.filter { $0.tokenType == "REQUESTS" }
-        XCTAssertEqual(requests?.count, 1)
-        XCTAssertEqual(requests?.first?.remainingFraction, 0.25)
+        XCTAssertEqual(quota.buckets?.first?.remainingFraction, 0.25)
+        XCTAssertEqual(quota.buckets?.last?.remainingAmount, "1000")
+    }
+
+    func testGeminiTierGrouping() {
+        // Several modelIds share one pool per tier; the group keeps the
+        // minimum remaining fraction (matching the Gemini CLI's display).
+        func bucket(_ model: String, _ remaining: Double) -> GeminiClient.QuotaResponse.Bucket {
+            try! JSONDecoder().decode(
+                GeminiClient.QuotaResponse.Bucket.self,
+                from: Data("""
+                {"modelId": "\(model)", "remainingFraction": \(remaining),
+                 "resetTime": "2026-07-28T00:02:18Z"}
+                """.utf8))
+        }
+        let metrics = GeminiClient.metrics(from: [
+            bucket("gemini-2.5-flash", 0.9),
+            bucket("gemini-3.1-flash-lite", 0.4),
+            bucket("gemini-2.5-flash-lite", 0.8),
+            bucket("gemini-2.5-pro", 1.0),
+        ])
+        XCTAssertEqual(metrics.map(\.id), ["gemini.pro", "gemini.flash", "gemini.flash-lite"])
+        XCTAssertEqual(metrics.map(\.label), ["Pro", "Flash", "Flash Lite"])
+        XCTAssertEqual(metrics[0].usedPercent, 0, accuracy: 0.001)
+        XCTAssertEqual(metrics[1].usedPercent, 10, accuracy: 0.001)
+        XCTAssertEqual(metrics[2].usedPercent, 60, accuracy: 0.001)
     }
 
     func testGeminiOAuthClientParsing() throws {

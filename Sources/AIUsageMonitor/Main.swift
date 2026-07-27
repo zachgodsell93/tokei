@@ -81,6 +81,9 @@ enum CheckCommand {
                     let percent = String(format: "%3.0f%%", metric.clampedPercent)
                     print("  \(metric.label)\(sub): \(percent)\(reset)")
                 }
+                if let note = snapshot.note {
+                    print("  note: \(note)")
+                }
             } catch {
                 print("\(provider.displayName): ✗ \(error.localizedDescription)")
             }

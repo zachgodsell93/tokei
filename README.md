@@ -8,7 +8,7 @@ It reads the credentials your local CLIs are already signed in with (Claude Code
 |---|---|---|
 | **Claude** (Anthropic) | 5-hour limit, 7-day limit (plus per-model 7-day limits when reported) | Claude Code's OAuth token → `api.anthropic.com/api/oauth/usage` |
 | **OpenAI** (Codex) | 5-hour / weekly rate-limit windows, plan, credits | `~/.codex/auth.json` → `chatgpt.com/backend-api/wham/usage` |
-| **Gemini** (Google) | Per-model daily request quota | `~/.gemini/oauth_creds.json` → Code Assist `retrieveUserQuota` |
+| **Gemini** (Google) | Per-tier daily quota (Pro / Flash / Flash Lite) | `~/.gemini/oauth_creds.json` → Code Assist `retrieveUserQuota` |
 
 Everything runs locally. Tokens are read from where the CLIs store them, requests go directly to each provider, and nothing is logged or sent anywhere else.
 
