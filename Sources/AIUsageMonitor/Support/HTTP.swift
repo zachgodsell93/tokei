@@ -32,6 +32,28 @@ enum HTTP {
     }
 }
 
+/// Append-only debug log at ~/Library/Caches/AIUsageMonitor.log recording
+/// each fetch outcome — the app has no console when launched normally.
+enum Diagnostics {
+    static let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("AIUsageMonitor.log")
+    private static let queue = DispatchQueue(label: "diagnostics")
+
+    static func log(_ line: String) {
+        queue.async {
+            let stamp = ISO8601DateFormatter().string(from: .now)
+            let entry = "\(stamp) \(line)\n"
+            if let handle = try? FileHandle(forWritingTo: url) {
+                defer { try? handle.close() }
+                _ = try? handle.seekToEnd()
+                try? handle.write(contentsOf: Data(entry.utf8))
+            } else {
+                try? entry.write(to: url, atomically: true, encoding: .utf8)
+            }
+        }
+    }
+}
+
 /// One-shot claim used to guarantee a continuation resumes exactly once.
 private final class ResumeFlag: @unchecked Sendable {
     private let lock = NSLock()

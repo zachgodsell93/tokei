@@ -110,6 +110,25 @@ final class UsageStore: ObservableObject {
             }
         }
         lastRefreshed = .now
+
+        // A transient failure right after launch would otherwise leave a
+        // provider (and the menu bar readout) empty until the next poll —
+        // retry failed fetches once after a short beat.
+        let failed = providers.filter {
+            if case .failed = statuses[$0] { return true }
+            return false
+        }
+        if !failed.isEmpty {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(10))
+                guard let self else { return }
+                for provider in failed {
+                    if case .failed = self.statuses[provider] {
+                        self.refresh(provider)
+                    }
+                }
+            }
+        }
     }
 
     private nonisolated func fetchStatus(for provider: AIProvider) async -> ProviderStatus {
@@ -138,6 +157,16 @@ final class UsageStore: ObservableObject {
     }
 
     private func apply(_ status: ProviderStatus, for provider: AIProvider) {
+        switch status {
+        case .ready(let snap):
+            Diagnostics.log("\(provider.rawValue): ready, \(snap.metrics.count) metrics")
+        case .failed(let message):
+            Diagnostics.log("\(provider.rawValue): FAILED — \(message)")
+        case .notConnected(let hint):
+            Diagnostics.log("\(provider.rawValue): not connected — \(hint)")
+        case .loading:
+            break
+        }
         switch status {
         case .failed(let message):
             // Keep showing the last good data through transient failures;
