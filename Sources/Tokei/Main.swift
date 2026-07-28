@@ -243,14 +243,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try? await Task.sleep(for: .milliseconds(600))
             if let window = settingsWindow, let store {
                 report.append("settingsWindow.visible: \(window.isVisible)")
+                let appearances: [(String, NSAppearance.Name, CGFloat)] = [
+                    ("light", .aqua, 0.97), ("dark", .darkAqua, 0.13),
+                ]
                 for tab in SettingsView.Tab.allCases {
                     let host = NSHostingController(
                         rootView: SettingsView(store: store, initialTab: tab))
                     window.contentViewController = host
-                    host.view.layoutSubtreeIfNeeded()
-                    try? await Task.sleep(for: .milliseconds(400))
-                    snapshot(host.view, to: "\(outputDir)/settings-\(tab.rawValue.lowercased()).png",
-                             background: NSColor(calibratedWhite: 0.97, alpha: 1))
+                    for (suffix, appearance, white) in appearances {
+                        host.view.appearance = NSAppearance(named: appearance)
+                        host.view.layoutSubtreeIfNeeded()
+                        try? await Task.sleep(for: .milliseconds(400))
+                        snapshot(host.view,
+                                 to: "\(outputDir)/settings-\(tab.rawValue.lowercased())-\(suffix).png",
+                                 background: NSColor(calibratedWhite: white, alpha: 1))
+                    }
                 }
                 window.close()
             }
