@@ -58,7 +58,7 @@ final class UsageStore: ObservableObject {
 
     static let defaultPinnedMetricIDs = [
         "claude.five_hour", "claude.seven_day",
-        "openai.five_hour", "openai.seven_day",
+        "openai.seven_day",
         "gemini.pro",
     ]
 

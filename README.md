@@ -34,7 +34,7 @@ Tokei reads the credentials your local CLIs are already signed in with — no AP
 | Provider | Metrics | Source |
 |---|---|---|
 | **Claude** (Anthropic) | 5-hour and 7-day limits, model-scoped weekly limits (e.g. Fable), and the dollar value of inference used per window | Claude Code's OAuth token → the same endpoint as `/usage`, plus local transcript pricing |
-| **OpenAI** (Codex) | 5-hour and weekly rate-limit windows, plan, credits | `~/.codex/auth.json` → the endpoint behind Codex's `/status` |
+| **OpenAI** (Codex) | Weekly rate-limit window, plan, credits | `~/.codex/auth.json` → the endpoint behind Codex's `/status` |
 | **Gemini** (Google) | Per-tier daily quota (Pro / Flash / Flash Lite) | `~/.gemini/oauth_creds.json` → Code Assist quota API |
 
 Everything runs locally. Tokens are read from where the CLIs store them, requests go directly to each provider, and nothing is logged or sent anywhere else.
@@ -45,7 +45,7 @@ Everything runs locally. Tokens are read from where the CLIs store them, request
 - **Dashboard popover** — per-provider cards with color-coded usage bars (green → yellow → orange → red), plan badges (Max 20x, Plus, …), and live "resets in 2h 38m" countdowns.
 - **Pace indicator** — a hatched blue segment inside each bar marks where usage would sit if burned evenly until reset, with an "ahead of / on / under pace" note beside the countdown. Toggleable in Settings.
 - **Inference dollars (Claude)** — each window shows the API-equivalent dollar value of the inference used in it (e.g. `$340.83`), priced from Claude Code's local transcripts at current per-model rates, including cache-write and cache-read pricing.
-- **Both windows, always** — Claude and OpenAI always show their 5-hour and 7-day/weekly windows (an unreported window means 0% used). Gemini shows daily windows — the only kind Google's quota API has.
+- **Stable windows** — Claude always shows its 5-hour and 7-day windows, and OpenAI its weekly window (an unreported window means 0% used). Gemini shows daily windows — the only kind Google's quota API has.
 - **Settings window** — General (open at login, refresh interval, pace toggle, updates), Models (provider visibility and menu-bar pins in one place), About.
 - **In-app updates** — Tokei checks GitHub Releases twice a day (and via Settings → Check for Updates); when a new version ships, a banner appears in the popover and one click downloads, installs, and relaunches. Releases are signed and notarized.
 - **Auto-refresh** — every 1/5/15/30 minutes plus refresh-on-open. Transient failures (including provider rate limits) keep the last good data on screen, and failed fetches retry automatically.

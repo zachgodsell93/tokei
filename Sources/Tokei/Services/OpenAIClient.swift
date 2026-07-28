@@ -148,23 +148,23 @@ struct OpenAIClient: Sendable {
                 windowSeconds: seconds)
         }
 
-        // The API only reports windows with activity (a fresh account gets
-        // just the weekly window, or none). Present stable 5-hour and weekly
-        // slots regardless: an unreported window genuinely means 0% used.
-        var fiveHour: UsageMetric?
+        // Codex no longer has a 5-hour window — only the weekly limit. Keep
+        // a stable weekly slot (an unreported window genuinely means 0%
+        // used), and pass through any other window the API actually reports
+        // rather than synthesizing rows for it.
         var weekly: UsageMetric?
+        var reportedExtras: [UsageMetric] = []
         for window in [usage.rate_limit?.primary_window, usage.rate_limit?.secondary_window] {
             guard let window, let seconds = window.limit_window_seconds else { continue }
-            if seconds < 86400 {
-                if fiveHour == nil { fiveHour = makeMetric(window, id: "openai.five_hour") }
-            } else if weekly == nil {
-                weekly = makeMetric(window, id: "openai.seven_day")
+            if seconds >= 86400 {
+                if weekly == nil { weekly = makeMetric(window, id: "openai.seven_day") }
+            } else if let metric = makeMetric(window, id: "openai.five_hour") {
+                reportedExtras.append(metric)
             }
         }
-        snapshot.metrics.append(fiveHour ?? UsageMetric(
-            id: "openai.five_hour", provider: .openai, label: "5-hour limit", usedPercent: 0))
         snapshot.metrics.append(weekly ?? UsageMetric(
             id: "openai.seven_day", provider: .openai, label: "Weekly limit", usedPercent: 0))
+        snapshot.metrics.append(contentsOf: reportedExtras)
 
         // Model-specific limits (e.g. Spark) arrive as named extra rate limits.
         for extra in usage.additional_rate_limits ?? [] {
