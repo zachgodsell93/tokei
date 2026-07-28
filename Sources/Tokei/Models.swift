@@ -51,6 +51,14 @@ struct UsageMetric: Identifiable, Equatable, Sendable {
     /// Total length of the rolling window in seconds (e.g. 18000 for 5h);
     /// enables the pace marker when combined with `resetsAt`.
     var windowSeconds: Double?
+    /// API-equivalent dollar value of the inference used in this window,
+    /// computed from local transcripts when available.
+    var usedDollars: Double?
+
+    var usedDollarsText: String? {
+        guard let usedDollars, usedDollars >= 0.005 else { return nil }
+        return String(format: "$%.2f", usedDollars)
+    }
 
     var clampedPercent: Double { min(max(usedPercent, 0), 100) }
 

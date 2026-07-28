@@ -108,6 +108,40 @@ actor AnthropicClient {
         return creds.claudeAiOauth.accessToken
     }
 
+    /// Which local-transcript models a Claude metric covers: the top-level
+    /// windows cover everything; model-scoped rows filter by model id.
+    static func modelFilter(forMetricID id: String) -> String? {
+        if id.hasPrefix("claude.limit.") {
+            return String(id.dropFirst("claude.limit.".count)).replacingOccurrences(of: "_", with: " ")
+        }
+        if id == "claude.seven_day_opus" { return "opus" }
+        if id == "claude.seven_day_sonnet" { return "sonnet" }
+        return nil
+    }
+
+    /// Prices local Claude Code transcript usage into each window's
+    /// dollar figure. Best-effort: failures leave usedDollars nil.
+    static func attachLocalCosts(to metrics: inout [UsageMetric]) async {
+        let starts: [Date] = metrics.compactMap { metric in
+            guard let resetsAt = metric.resetsAt, let window = metric.windowSeconds else { return nil }
+            return resetsAt.addingTimeInterval(-window)
+        }
+        guard let oldest = starts.min() else { return }
+        let entries = await ClaudeCostCalculator.shared.entries(since: oldest)
+        guard !entries.isEmpty else { return }
+        for index in metrics.indices {
+            guard let resetsAt = metrics[index].resetsAt,
+                  let window = metrics[index].windowSeconds else { continue }
+            let start = resetsAt.addingTimeInterval(-window)
+            let total = ClaudeCostCalculator.sum(
+                entries, since: start,
+                modelSubstring: Self.modelFilter(forMetricID: metrics[index].id))
+            if total > 0 {
+                metrics[index].usedDollars = total
+            }
+        }
+    }
+
     private nonisolated func request(_ url: URL, token: String) -> URLRequest {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -152,6 +186,7 @@ actor AnthropicClient {
         add(usage.seven_day_opus, id: "claude.seven_day_opus", label: "7-day · Opus", windowSeconds: week)
         add(usage.seven_day_sonnet, id: "claude.seven_day_sonnet", label: "7-day · Sonnet", windowSeconds: week)
         metrics.append(contentsOf: Self.scopedMetrics(from: usage.limits ?? []))
+        await Self.attachLocalCosts(to: &metrics)
         snapshot.metrics = metrics
 
         if cachedProfile == nil {

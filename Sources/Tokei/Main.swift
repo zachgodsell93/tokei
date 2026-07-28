@@ -320,7 +320,8 @@ enum CheckCommand {
                     } ?? ""
                     let sub = metric.sublabel.map { " (\($0))" } ?? ""
                     let percent = String(format: "%3.0f%%", metric.clampedPercent)
-                    print("  \(metric.label)\(sub): \(percent)\(reset)")
+                    let dollars = metric.usedDollarsText.map { "  \($0)" } ?? ""
+                    print("  \(metric.label)\(sub): \(percent)\(reset)\(dollars)")
                 }
                 if let note = snapshot.note {
                     print("  note: \(note)")

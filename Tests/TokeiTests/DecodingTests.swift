@@ -47,6 +47,63 @@ final class DecodingTests: XCTestCase {
         XCTAssertNotNil(metrics.first?.resetsAt)
     }
 
+    // MARK: - Claude local costs
+
+    func testCostPricingLookup() {
+        XCTAssertEqual(ClaudeCostCalculator.pricing(for: "claude-fable-5")?.input, 10 / 1e6)
+        XCTAssertEqual(ClaudeCostCalculator.pricing(for: "claude-opus-5")?.output, 25 / 1e6)
+        XCTAssertEqual(ClaudeCostCalculator.pricing(for: "claude-opus-4-1")?.input, 15 / 1e6)
+        XCTAssertEqual(ClaudeCostCalculator.pricing(for: "claude-sonnet-5")?.input, 3 / 1e6)
+        XCTAssertEqual(ClaudeCostCalculator.pricing(for: "claude-haiku-4-5")?.output, 5 / 1e6)
+        XCTAssertNil(ClaudeCostCalculator.pricing(for: "<synthetic>"))
+    }
+
+    func testTranscriptLineParsing() {
+        let json = """
+        {"type":"assistant","timestamp":"2026-07-27T23:09:00.258Z","requestId":"req_1",
+         "message":{"id":"msg_1","model":"claude-fable-5","usage":{
+           "input_tokens":100,"output_tokens":1000,
+           "cache_creation_input_tokens":5000,"cache_read_input_tokens":20000,
+           "cache_creation":{"ephemeral_1h_input_tokens":5000,"ephemeral_5m_input_tokens":0}}}}
+        """
+        let entry = ClaudeCostCalculator.parse(line: Data(json.utf8))
+        XCTAssertNotNil(entry)
+        XCTAssertEqual(entry?.dedupeKey, "msg_1|req_1")
+        XCTAssertEqual(entry?.model, "claude-fable-5")
+        // 100×$10/M + 1000×$50/M + 20000×$1/M + 5000×$20/M (1h write = 2×$10)
+        let inputCost: Double = 100 * 10.0 / 1e6
+        let outputCost: Double = 1000 * 50.0 / 1e6
+        let readCost: Double = 20000 * 1.0 / 1e6
+        let writeCost: Double = 5000 * 20.0 / 1e6
+        let expected = inputCost + outputCost + readCost + writeCost
+        XCTAssertEqual(entry!.costDollars, expected, accuracy: 1e-9)
+
+        XCTAssertNil(ClaudeCostCalculator.parse(line: Data(#"{"type":"user"}"#.utf8)))
+    }
+
+    func testCostWindowSumAndFilter() {
+        let now = Date(timeIntervalSince1970: 1_785_110_400)
+        func entry(_ key: String, model: String, age: Double, cost: Double) -> ClaudeCostCalculator.CostEntry {
+            .init(dedupeKey: key, timestamp: now.addingTimeInterval(-age), model: model, costDollars: cost)
+        }
+        let entries = [
+            entry("a", model: "claude-fable-5", age: 100, cost: 1.0),
+            entry("b", model: "claude-opus-5", age: 200, cost: 2.0),
+            entry("c", model: "claude-fable-5", age: 99999, cost: 4.0),  // outside window
+        ]
+        XCTAssertEqual(ClaudeCostCalculator.sum(entries, since: now.addingTimeInterval(-1000)), 3.0)
+        XCTAssertEqual(ClaudeCostCalculator.sum(entries, since: now.addingTimeInterval(-1000),
+                                                modelSubstring: "fable"), 1.0)
+        XCTAssertEqual(ClaudeCostCalculator.sum(entries, since: .distantPast), 7.0)
+    }
+
+    func testClaudeModelFilterForMetric() {
+        XCTAssertNil(AnthropicClient.modelFilter(forMetricID: "claude.five_hour"))
+        XCTAssertNil(AnthropicClient.modelFilter(forMetricID: "claude.seven_day"))
+        XCTAssertEqual(AnthropicClient.modelFilter(forMetricID: "claude.limit.fable"), "fable")
+        XCTAssertEqual(AnthropicClient.modelFilter(forMetricID: "claude.seven_day_opus"), "opus")
+    }
+
     // MARK: - Updates
 
     func testUpdateVersionComparison() {
