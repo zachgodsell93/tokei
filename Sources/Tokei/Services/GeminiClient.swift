@@ -178,7 +178,8 @@ actor GeminiClient {
                     label: entry.group.label,
                     sublabel: "daily",
                     usedPercent: (1 - entry.fraction) * 100,
-                    resetsAt: entry.resetTime.flatMap(Timestamps.parseISO))
+                    resetsAt: entry.resetTime.flatMap(Timestamps.parseISO),
+                    windowSeconds: 86400)
             }
     }
 

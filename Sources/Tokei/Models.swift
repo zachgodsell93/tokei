@@ -48,6 +48,9 @@ struct UsageMetric: Identifiable, Equatable, Sendable {
     var sublabel: String?
     let usedPercent: Double
     var resetsAt: Date?
+    /// Total length of the rolling window in seconds (e.g. 18000 for 5h);
+    /// enables the pace marker when combined with `resetsAt`.
+    var windowSeconds: Double?
 
     var clampedPercent: Double { min(max(usedPercent, 0), 100) }
 
@@ -58,6 +61,36 @@ struct UsageMetric: Identifiable, Equatable, Sendable {
         case ..<90: return .orange
         default: return .red
         }
+    }
+
+    /// How much of the window has elapsed at `date` (0...1) — the position
+    /// usage would be at if burned at a perfectly even rate until reset.
+    func elapsedFraction(at date: Date = .now) -> Double? {
+        guard let resetsAt, let windowSeconds, windowSeconds > 0 else { return nil }
+        let remaining = resetsAt.timeIntervalSince(date)
+        return min(max(1 - remaining / windowSeconds, 0), 1)
+    }
+
+    enum Pace {
+        case ahead, on, under
+
+        var text: String {
+            switch self {
+            case .ahead: return "ahead of pace"
+            case .on: return "on pace"
+            case .under: return "under pace"
+            }
+        }
+    }
+
+    /// Usage relative to the even-burn rate: more than 5 points above the
+    /// elapsed-time position counts as ahead, more than 5 below as under.
+    func pace(at date: Date = .now) -> Pace? {
+        guard let elapsed = elapsedFraction(at: date) else { return nil }
+        let delta = clampedPercent / 100 - elapsed
+        if delta > 0.05 { return .ahead }
+        if delta < -0.05 { return .under }
+        return .on
     }
 }
 

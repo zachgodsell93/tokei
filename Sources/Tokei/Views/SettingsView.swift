@@ -113,6 +113,14 @@ struct GeneralSettingsTab: View {
             .pickerStyle(.menu)
             .fixedSize()
 
+            VStack(alignment: .leading, spacing: 2) {
+                Toggle("Show pace indicator", isOn: $store.showPaceIndicator)
+                Text("Marks where usage would sit if burned evenly until the window resets, and notes whether you're ahead of or under that pace.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {

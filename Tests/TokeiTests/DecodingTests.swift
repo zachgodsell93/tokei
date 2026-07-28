@@ -241,6 +241,28 @@ final class DecodingTests: XCTestCase {
         XCTAssertEqual(metric(-5).clampedPercent, 0)
     }
 
+    func testPaceIndicator() {
+        let now = Date(timeIntervalSince1970: 1_785_110_400)
+        func metric(_ percent: Double, remaining: Double, window: Double) -> UsageMetric {
+            UsageMetric(id: "t", provider: .claude, label: "t", usedPercent: percent,
+                        resetsAt: now.addingTimeInterval(remaining), windowSeconds: window)
+        }
+        // Half the 5h window elapsed:
+        let halfway = metric(50, remaining: 9000, window: 18000)
+        XCTAssertEqual(halfway.elapsedFraction(at: now)!, 0.5, accuracy: 0.001)
+        XCTAssertEqual(halfway.pace(at: now), .on)
+
+        // 80% used but only half elapsed → ahead of pace.
+        XCTAssertEqual(metric(80, remaining: 9000, window: 18000).pace(at: now), .ahead)
+        // 20% used at half elapsed → under pace.
+        XCTAssertEqual(metric(20, remaining: 9000, window: 18000).pace(at: now), .under)
+        // No window info → no pace.
+        XCTAssertNil(UsageMetric(id: "t", provider: .claude, label: "t", usedPercent: 50)
+            .pace(at: now))
+        // Reset already passed → clamps to fully elapsed.
+        XCTAssertEqual(metric(10, remaining: -60, window: 18000).elapsedFraction(at: now), 1.0)
+    }
+
     func testMenuBarGroupText() {
         let single = UsageStore.MenuBarGroup(provider: .claude, percents: [19.4])
         XCTAssertEqual(single.text, "19%")

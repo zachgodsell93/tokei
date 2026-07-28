@@ -132,14 +132,27 @@ struct MetricRowView: View {
                 .buttonStyle(.plain)
                 .help(pinned ? "Remove from menu bar" : "Show in menu bar")
             }
-            UsageBarView(percent: metric.clampedPercent, color: metric.severityColor)
-            if let resetsAt = metric.resetsAt {
-                TimelineView(.periodic(from: .now, by: 60)) { context in
-                    HStack {
-                        Text("resets in \(Timestamps.shortCountdown(to: resetsAt, from: context.date))")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                        Spacer()
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                let paceEnabled = store.showPaceIndicator
+                VStack(spacing: 3) {
+                    UsageBarView(
+                        percent: metric.clampedPercent,
+                        color: metric.severityColor,
+                        paceFraction: paceEnabled ? metric.elapsedFraction(at: context.date) : nil)
+                    if let resetsAt = metric.resetsAt {
+                        HStack(spacing: 4) {
+                            Text("resets in \(Timestamps.shortCountdown(to: resetsAt, from: context.date))")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                            if paceEnabled, let pace = metric.pace(at: context.date) {
+                                Text("· \(pace.text)")
+                                    .font(.caption2)
+                                    .foregroundStyle(pace == .ahead
+                                        ? AnyShapeStyle(.orange)
+                                        : AnyShapeStyle(.tertiary))
+                            }
+                            Spacer()
+                        }
                     }
                 }
             }
@@ -150,6 +163,9 @@ struct MetricRowView: View {
 struct UsageBarView: View {
     let percent: Double
     let color: Color
+    /// 0...1 position of the pace marker (time elapsed in the window); the
+    /// fill being left of the marker means usage is under the even-burn rate.
+    var paceFraction: Double? = nil
 
     var body: some View {
         GeometryReader { geo in
@@ -161,9 +177,17 @@ struct UsageBarView: View {
                         .fill(color.gradient)
                         .frame(width: max(6, geo.size.width * percent / 100))
                 }
+                if let paceFraction {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(Color.primary.opacity(0.38))
+                        .frame(width: 2, height: 12)
+                        .offset(x: max(0, min(geo.size.width - 2, geo.size.width * paceFraction - 1)),
+                                y: -3)
+                }
             }
         }
         .frame(height: 6)
+        .padding(.vertical, paceFraction != nil ? 2 : 0)
         .animation(.easeOut(duration: 0.25), value: percent)
     }
 }

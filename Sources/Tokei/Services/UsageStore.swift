@@ -41,12 +41,19 @@ final class UsageStore: ObservableObject {
         didSet { defaults.set(pinnedMetricIDs, forKey: Keys.pinnedMetrics) }
     }
 
+    /// Pace marker on usage bars: where usage would sit if burned evenly
+    /// until the window resets.
+    @Published var showPaceIndicator: Bool {
+        didSet { defaults.set(showPaceIndicator, forKey: Keys.showPaceIndicator) }
+    }
+
     private enum Keys {
         static let pollMinutes = "pollMinutes"
         static let enabledProviders = "enabledProviders"
         // v2: pin IDs became slot-based (openai.five_hour) and the default
         // set grew to one entry per provider when logos landed.
         static let pinnedMetrics = "pinnedMetricsV2"
+        static let showPaceIndicator = "showPaceIndicator"
     }
 
     static let defaultPinnedMetricIDs = [
@@ -73,6 +80,7 @@ final class UsageStore: ObservableObject {
         }
         pinnedMetricIDs = defaults.stringArray(forKey: Keys.pinnedMetrics)
             ?? Self.defaultPinnedMetricIDs
+        showPaceIndicator = defaults.object(forKey: Keys.showPaceIndicator) as? Bool ?? true
         startPolling()
     }
 

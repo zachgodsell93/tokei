@@ -66,7 +66,8 @@ actor AnthropicClient {
                 provider: .claude,
                 label: limit.group == "weekly" ? "7-day · \(name)" : name,
                 usedPercent: percent,
-                resetsAt: limit.resets_at.flatMap(Timestamps.parseISO))
+                resetsAt: limit.resets_at.flatMap(Timestamps.parseISO),
+                windowSeconds: limit.group == "weekly" ? 7 * 86400 : nil)
         }
     }
 
@@ -132,7 +133,8 @@ actor AnthropicClient {
         var snapshot = ProviderSnapshot(provider: .claude)
         var metrics: [UsageMetric] = []
 
-        func add(_ window: UsageResponse.Window?, id: String, label: String, sublabel: String? = nil) {
+        func add(_ window: UsageResponse.Window?, id: String, label: String,
+                 sublabel: String? = nil, windowSeconds: Double) {
             guard let window, let used = window.utilization else { return }
             metrics.append(UsageMetric(
                 id: id,
@@ -140,13 +142,15 @@ actor AnthropicClient {
                 label: label,
                 sublabel: sublabel,
                 usedPercent: used,
-                resetsAt: window.resets_at.flatMap(Timestamps.parseISO)))
+                resetsAt: window.resets_at.flatMap(Timestamps.parseISO),
+                windowSeconds: windowSeconds))
         }
 
-        add(usage.five_hour, id: "claude.five_hour", label: "5-hour limit")
-        add(usage.seven_day, id: "claude.seven_day", label: "7-day limit")
-        add(usage.seven_day_opus, id: "claude.seven_day_opus", label: "7-day · Opus")
-        add(usage.seven_day_sonnet, id: "claude.seven_day_sonnet", label: "7-day · Sonnet")
+        let week: Double = 7 * 86400
+        add(usage.five_hour, id: "claude.five_hour", label: "5-hour limit", windowSeconds: 5 * 3600)
+        add(usage.seven_day, id: "claude.seven_day", label: "7-day limit", windowSeconds: week)
+        add(usage.seven_day_opus, id: "claude.seven_day_opus", label: "7-day · Opus", windowSeconds: week)
+        add(usage.seven_day_sonnet, id: "claude.seven_day_sonnet", label: "7-day · Sonnet", windowSeconds: week)
         metrics.append(contentsOf: Self.scopedMetrics(from: usage.limits ?? []))
         snapshot.metrics = metrics
 

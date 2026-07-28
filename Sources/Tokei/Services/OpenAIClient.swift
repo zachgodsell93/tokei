@@ -144,7 +144,8 @@ struct OpenAIClient: Sendable {
                 label: Self.windowLabel(seconds: seconds),
                 sublabel: sublabel,
                 usedPercent: used,
-                resetsAt: resetsAt)
+                resetsAt: resetsAt,
+                windowSeconds: seconds)
         }
 
         // The API only reports windows with activity (a fresh account gets
