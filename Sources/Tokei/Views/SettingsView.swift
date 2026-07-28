@@ -115,7 +115,7 @@ struct GeneralSettingsTab: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Toggle("Show pace indicator", isOn: $store.showPaceIndicator)
-                Text("Marks where usage would sit if burned evenly until the window resets, and notes whether you're ahead of or under that pace.")
+                Text("Shows a hatched blue segment up to where usage would sit if burned evenly until the window resets — the zone you're tracking toward. Fill past the blue means you're ahead of pace.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -163,8 +163,9 @@ struct MetricRowView: View {
 struct UsageBarView: View {
     let percent: Double
     let color: Color
-    /// 0...1 position of the pace marker (time elapsed in the window); the
-    /// fill being left of the marker means usage is under the even-burn rate.
+    /// 0...1 elapsed-time position in the window. Rendered as a hatched blue
+    /// segment beneath the fill: fill short of the blue means there's runway
+    /// left at an even burn rate; fill covering it means ahead of pace.
     var paceFraction: Double? = nil
 
     var body: some View {
@@ -172,22 +173,40 @@ struct UsageBarView: View {
             ZStack(alignment: .leading) {
                 Capsule()
                     .fill(Color.primary.opacity(0.08))
+                if let paceFraction, paceFraction > 0 {
+                    Capsule()
+                        .fill(Color.blue.opacity(0.16))
+                        .overlay(
+                            DiagonalStripes()
+                                .stroke(Color.blue.opacity(0.45), lineWidth: 1.5)
+                        )
+                        .clipShape(Capsule())
+                        .frame(width: max(6, geo.size.width * paceFraction))
+                }
                 if percent > 0 {
                     Capsule()
                         .fill(color.gradient)
                         .frame(width: max(6, geo.size.width * percent / 100))
                 }
-                if let paceFraction {
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(Color.primary.opacity(0.38))
-                        .frame(width: 2, height: 12)
-                        .offset(x: max(0, min(geo.size.width - 2, geo.size.width * paceFraction - 1)),
-                                y: -3)
-                }
             }
         }
-        .frame(height: 6)
-        .padding(.vertical, paceFraction != nil ? 2 : 0)
+        .frame(height: 7)
         .animation(.easeOut(duration: 0.25), value: percent)
+    }
+}
+
+/// Diagonal cross-hatching for the pace segment.
+struct DiagonalStripes: Shape {
+    var spacing: CGFloat = 4.5
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        var x = -rect.height
+        while x < rect.width {
+            path.move(to: CGPoint(x: x, y: rect.height))
+            path.addLine(to: CGPoint(x: x + rect.height, y: 0))
+            x += spacing
+        }
+        return path
     }
 }
