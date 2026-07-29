@@ -139,27 +139,19 @@ struct MetricRowView: View {
                         percent: metric.clampedPercent,
                         color: metric.severityColor,
                         paceFraction: paceEnabled ? metric.elapsedFraction(at: context.date) : nil)
-                    if metric.resetsAt != nil || metric.usedDollarsText != nil {
+                    if let resetsAt = metric.resetsAt {
                         HStack(spacing: 4) {
-                            if let resetsAt = metric.resetsAt {
-                                Text("resets in \(Timestamps.shortCountdown(to: resetsAt, from: context.date))")
+                            Text("resets in \(Timestamps.shortCountdown(to: resetsAt, from: context.date))")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                            if paceEnabled, let pace = metric.pace(at: context.date) {
+                                Text("· \(pace.text)")
                                     .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                                if paceEnabled, let pace = metric.pace(at: context.date) {
-                                    Text("· \(pace.text)")
-                                        .font(.caption2)
-                                        .foregroundStyle(pace == .ahead
-                                            ? AnyShapeStyle(.orange)
-                                            : AnyShapeStyle(.tertiary))
-                                }
+                                    .foregroundStyle(pace == .ahead
+                                        ? AnyShapeStyle(.orange)
+                                        : AnyShapeStyle(.tertiary))
                             }
                             Spacer()
-                            if let dollars = metric.usedDollarsText {
-                                Text(dollars)
-                                    .font(.caption2.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                                    .help("API-equivalent value of inference used this window, from this Mac's Claude Code transcripts")
-                            }
                         }
                     }
                 }
